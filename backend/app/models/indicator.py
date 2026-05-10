@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 class Indicator(Base):
@@ -11,3 +12,5 @@ class Indicator(Base):
     description = Column(String(500), nullable=True)
     search_keywords = Column(String(500), nullable=True)
     confirmed_by_user = Column(Boolean, default=False)
+
+    metric_values = relationship("MetricValue", back_populates="indicator", cascade="all, delete-orphan")

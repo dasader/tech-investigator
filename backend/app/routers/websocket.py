@@ -14,6 +14,7 @@ async def job_status_ws(websocket: WebSocket, job_id: int):
             job = db.query(Job).filter(Job.id == job_id).first()
             if not job:
                 await websocket.send_json({"error": "not found"})
+                await websocket.close()
                 break
             await websocket.send_json({
                 "status": job.status,

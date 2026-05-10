@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 class MetricValue(Base):
@@ -6,6 +7,8 @@ class MetricValue(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     indicator_id = Column(Integer, ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    indicator = relationship("Indicator", back_populates="metric_values")
     value = Column(Float, nullable=True)
     unit = Column(String(50), nullable=True)
     year = Column(Integer, nullable=True)

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.job import Job
 from app.models.indicator import Indicator
-from app.models.metric_value import MetricValue
 
 router = APIRouter(tags=["results"])
 
@@ -13,11 +13,18 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != "done":
-        raise HTTPException(status_code=202, detail="Processing not complete")
-    indicators = db.query(Indicator).filter(Indicator.query_id == job.query_id).all()
+        return JSONResponse(
+            status_code=202,
+            content={"job_id": job_id, "status": job.status, "message": "Processing not complete"},
+        )
+    indicators = (
+        db.query(Indicator)
+        .filter(Indicator.query_id == job.query_id)
+        .options(joinedload(Indicator.metric_values))
+        .all()
+    )
     output = []
     for ind in indicators:
-        values = db.query(MetricValue).filter(MetricValue.indicator_id == ind.id).all()
         output.append({
             "indicator": {"id": ind.id, "name": ind.name, "unit": ind.unit},
             "metric_values": [
@@ -32,7 +39,7 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
                     "source_url": mv.source_url,
                     "quote": mv.quote,
                 }
-                for mv in values
+                for mv in ind.metric_values
             ],
         })
     return {
