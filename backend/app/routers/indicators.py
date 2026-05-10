@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models.indicator import Indicator
-from app.schemas.indicator import IndicatorCreate, IndicatorOut, IndicatorUpdate
+from app.schemas.indicator import IndicatorOut, IndicatorUpdate
 from app.agents.indicator_agent import generate_indicators
 
 router = APIRouter(tags=["indicators"])
