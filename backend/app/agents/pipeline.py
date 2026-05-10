@@ -44,14 +44,26 @@ async def search_node(state: PipelineState, db: Session) -> PipelineState:
 
 async def extract_node(state: PipelineState, db: Session) -> PipelineState:
     _update_job(db, state["job_id"], 40.0, "수치 추출 중")
-    extracted = {}
+
+    semaphore = asyncio.Semaphore(10)
+
+    tasks_meta = []
     for ind in state["indicators"]:
         papers = state["search_results"].get(ind["id"], [])[:settings.max_papers_per_indicator]
-        extractions = [
-            extract_metric_from_paper(p, ind["name"], ind.get("unit", ""))
-            for p in papers
-        ]
-        extracted[ind["id"]] = extractions
+        for paper in papers:
+            tasks_meta.append((ind, paper))
+
+    tasks = [
+        extract_metric_from_paper(paper, ind["name"], ind.get("unit", ""), semaphore)
+        for ind, paper in tasks_meta
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    extracted: dict = {ind["id"]: [] for ind in state["indicators"]}
+    for (ind, _), result in zip(tasks_meta, results):
+        if not isinstance(result, Exception):
+            extracted[ind["id"]].append(result)
+
     return {**state, "extracted_values": extracted}
 
 async def validate_node(state: PipelineState, db: Session) -> PipelineState:
@@ -62,9 +74,14 @@ async def validate_node(state: PipelineState, db: Session) -> PipelineState:
         top3 = validate_and_rank(extractions)
         validated[ind["id"]] = top3
         for mv_data in top3:
+            v = mv_data.get("value")
+            try:
+                numeric_value = float(v) if v is not None else None
+            except (TypeError, ValueError):
+                numeric_value = None
             mv = MetricValue(
                 indicator_id=ind["id"],
-                value=mv_data.get("value"),
+                value=numeric_value,
                 unit=mv_data.get("unit"),
                 year=mv_data.get("year"),
                 country=mv_data.get("country"),
@@ -86,7 +103,7 @@ async def synthesize_node(state: PipelineState, db: Session) -> PipelineState:
     }
     from datetime import datetime, timezone
     analyzed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    markdown = build_report_markdown(state["category"], state["description"], results_by_indicator, analyzed_at)
+    markdown = await build_report_markdown(state["category"], state["description"], results_by_indicator, analyzed_at)
     return {**state, "report_markdown": markdown}
 
 async def run_pipeline(job_id: int, db: Session) -> str:
