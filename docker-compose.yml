@@ -9,11 +9,21 @@ services:
       - "5439:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U techspec"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
 
   minio:
     image: minio/minio
@@ -34,9 +44,12 @@ services:
       - "8017:8000"
     env_file: .env
     depends_on:
-      - db
-      - redis
-      - minio
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
     volumes:
       - ./backend:/app
 
@@ -45,9 +58,12 @@ services:
     command: celery -A app.celery_app worker --loglevel=info
     env_file: .env
     depends_on:
-      - db
-      - redis
-      - minio
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
     volumes:
       - ./backend:/app
 
