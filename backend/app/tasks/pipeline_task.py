@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.job import Job
@@ -13,12 +13,12 @@ def run_pipeline_task(self, job_id: int):
         db.commit()
 
         from app.agents.pipeline import run_pipeline
-        report_markdown = asyncio.run(run_pipeline(job_id, db))
+        report_markdown = asyncio.run(run_pipeline(job_id, db))  # used in Task 11 PDF integration
 
         job.status = "done"
         job.progress_pct = 100.0
         job.current_step = "완료"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         db.commit()
         return {"job_id": job_id, "status": "done"}
 
