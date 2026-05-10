@@ -1,4 +1,5 @@
 import pytest
+import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.agents.search_agent import search_papers_for_indicator
 
@@ -48,3 +49,27 @@ async def test_search_filters_empty_abstracts():
         mock_client.get.return_value = mock_response
         results = await search_papers_for_indicator("test keyword", max_results=5)
     assert all(r["abstract"] for r in results)
+
+
+@pytest.mark.asyncio
+async def test_search_raises_on_http_error():
+    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_client.get.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests",
+            request=MagicMock(),
+            response=MagicMock(status_code=429),
+        )
+        with pytest.raises(RuntimeError, match="Semantic Scholar API error 429"):
+            await search_papers_for_indicator("HBM bandwidth")
+
+
+@pytest.mark.asyncio
+async def test_search_raises_on_timeout():
+    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_client.get.side_effect = httpx.TimeoutException("timeout")
+        with pytest.raises(RuntimeError, match="timeout"):
+            await search_papers_for_indicator("HBM bandwidth")

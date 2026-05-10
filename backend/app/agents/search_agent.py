@@ -6,19 +6,26 @@ SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds"
 
 
 async def search_papers_for_indicator(keywords: str, max_results: int | None = None) -> list[dict]:
-    max_results = max_results or settings.max_papers_per_indicator
+    max_results = max_results if max_results is not None else settings.max_papers_per_indicator
     headers = {}
     if settings.semantic_scholar_api_key:
         headers["x-api-key"] = settings.semantic_scholar_api_key
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get(
-            SS_API_URL,
-            params={"query": keywords, "limit": max_results, "fields": SS_FIELDS},
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json().get("data", [])
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                SS_API_URL,
+                params={"query": keywords, "limit": max_results, "fields": SS_FIELDS},
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json().get("data", [])
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"Semantic Scholar API error {e.response.status_code}: {keywords}") from e
+    except httpx.TimeoutException:
+        raise RuntimeError(f"Semantic Scholar API timeout for: {keywords}")
+    except httpx.RequestError as e:
+        raise RuntimeError(f"Semantic Scholar network error: {keywords}") from e
 
     papers = [
         {
