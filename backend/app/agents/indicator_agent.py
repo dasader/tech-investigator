@@ -38,4 +38,7 @@ async def generate_indicators(category: str, description: str) -> list[dict]:
             ),
         )
     )
-    return json.loads(response.text)
+    text = response.text
+    if not text:
+        raise ValueError("Empty response from Gemini")
+    return json.loads(text)
