@@ -26,7 +26,7 @@ def run_pipeline_task(self, job_id: int):
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
             job.status = "failed"
-            job.current_step = f"오류: {str(exc)[:100]}"
+            job.current_step = f"오류: {str(exc)[:93]}"
             db.commit()
         raise self.retry(exc=exc)
     finally:
