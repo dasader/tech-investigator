@@ -2,6 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import tech_input, indicators, jobs, results, websocket
 
+# 모든 모델을 먼저 임포트해야 SQLAlchemy relationship이 올바르게 초기화됨
+import app.models.tech_query  # noqa: F401
+import app.models.indicator   # noqa: F401
+import app.models.metric_value  # noqa: F401
+import app.models.job         # noqa: F401
+
 app = FastAPI(title="TechSpec API")
 
 app.add_middleware(
