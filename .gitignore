@@ -1,2 +1,4 @@
 .worktrees/
 backend/.env
+frontend/node_modules/
+frontend/dist/
