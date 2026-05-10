@@ -5,7 +5,7 @@ class MetricValue(Base):
     __tablename__ = "metric_values"
 
     id = Column(Integer, primary_key=True, index=True)
-    indicator_id = Column(Integer, ForeignKey("indicators.id"), nullable=False)
+    indicator_id = Column(Integer, ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False, index=True)
     value = Column(Float, nullable=True)
     unit = Column(String(50), nullable=True)
     year = Column(Integer, nullable=True)

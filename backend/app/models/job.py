@@ -5,7 +5,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    query_id = Column(Integer, ForeignKey("tech_queries.id"), nullable=False)
+    query_id = Column(Integer, ForeignKey("tech_queries.id", ondelete="CASCADE"), nullable=False, index=True)
     status = Column(String(20), default="pending")  # pending/running/done/failed
     progress_pct = Column(Float, default=0.0)
     current_step = Column(String(100), nullable=True)
