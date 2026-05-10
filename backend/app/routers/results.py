@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.job import Job
 from app.models.indicator import Indicator
+from app.config import settings
 
 router = APIRouter(tags=["results"])
 
@@ -47,3 +48,16 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
         "analyzed_at": job.completed_at.isoformat() if job.completed_at else None,
         "indicators": output,
     }
+
+
+@router.get("/jobs/{job_id}/pdf")
+def download_pdf(job_id: int):
+    from app.services.minio_service import get_minio_client
+    client = get_minio_client()
+    key = f"reports/job_{job_id}.pdf"
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.minio_bucket, "Key": key},
+        ExpiresIn=3600,
+    )
+    return RedirectResponse(url=url)

@@ -20,6 +20,19 @@ def run_pipeline_task(self, job_id: int):
         job.current_step = "완료"
         job.completed_at = datetime.now(timezone.utc)
         db.commit()
+
+        from app.services.pdf_service import markdown_to_pdf_bytes
+        from app.services.minio_service import upload_pdf
+        from app.services.email_service import send_completion_email
+        from app.models.tech_query import TechQuery
+
+        pdf_bytes = markdown_to_pdf_bytes(report_markdown)
+        pdf_url = upload_pdf(job_id, pdf_bytes)
+
+        query = db.query(TechQuery).filter(TechQuery.id == job.query_id).first()
+        if query and query.user_email:
+            asyncio.run(send_completion_email(query.user_email, job_id, pdf_url))
+
         return {"job_id": job_id, "status": "done"}
 
     except Exception as exc:
