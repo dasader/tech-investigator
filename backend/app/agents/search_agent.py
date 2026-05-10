@@ -1,12 +1,11 @@
 import httpx
-from typing import Optional
 from app.config import settings
 
 SS_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds"
 
 
-async def search_papers_for_indicator(keywords: str, max_results: Optional[int] = None) -> list[dict]:
+async def search_papers_for_indicator(keywords: str, max_results: int | None = None) -> list[dict]:
     max_results = max_results or settings.max_papers_per_indicator
     headers = {}
     if settings.semantic_scholar_api_key:
@@ -36,6 +35,6 @@ async def search_papers_for_indicator(keywords: str, max_results: Optional[int] 
     return papers
 
 
-async def search_all_sources(keywords: str, max_results: Optional[int] = None) -> list[dict]:
+async def search_all_sources(keywords: str, max_results: int | None = None) -> list[dict]:
     results = await search_papers_for_indicator(keywords, max_results)
     return results
