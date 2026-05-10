@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 from app.agents.indicator_agent import generate_indicators
@@ -23,9 +24,26 @@ async def test_generate_indicators_returns_list():
 async def test_generate_indicators_returns_at_least_5():
     with patch("app.agents.indicator_agent.genai_client") as mock_client:
         items = [{"name": f"지표{i}", "unit": "unit", "description": "desc", "search_keywords": "kw"} for i in range(7)]
-        import json
         mock_response = MagicMock()
         mock_response.text = json.dumps(items)
         mock_client.models.generate_content.return_value = mock_response
         result = await generate_indicators("반도체", "HBM 기술")
     assert len(result) >= 5
+
+@pytest.mark.asyncio
+async def test_empty_response_raises():
+    with patch("app.agents.indicator_agent.genai_client") as mock_client:
+        mock_response = MagicMock()
+        mock_response.text = ""
+        mock_client.models.generate_content.return_value = mock_response
+        with pytest.raises(ValueError, match="Empty response"):
+            await generate_indicators("반도체", "HBM")
+
+@pytest.mark.asyncio
+async def test_invalid_json_raises():
+    with patch("app.agents.indicator_agent.genai_client") as mock_client:
+        mock_response = MagicMock()
+        mock_response.text = "not valid json {{{"
+        mock_client.models.generate_content.return_value = mock_response
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            await generate_indicators("반도체", "HBM")

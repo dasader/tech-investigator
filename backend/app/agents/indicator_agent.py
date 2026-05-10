@@ -41,4 +41,13 @@ async def generate_indicators(category: str, description: str) -> list[dict]:
     text = response.text
     if not text:
         raise ValueError("Empty response from Gemini")
-    return json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON from Gemini: {text[:200]}") from e
+    if not isinstance(data, list):
+        raise ValueError("Gemini response must be a JSON array")
+    for item in data:
+        if not isinstance(item, dict) or "name" not in item:
+            raise ValueError(f"Invalid indicator structure: {item}")
+    return data
