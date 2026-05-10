@@ -2,6 +2,12 @@ import asyncio
 from datetime import datetime, timezone
 from app.celery_app import celery_app
 from app.database import SessionLocal
+
+# Worker 시작 시 모든 모델을 임포트해야 SQLAlchemy FK 관계가 정상 초기화됨
+import app.models.tech_query   # noqa: F401
+import app.models.indicator    # noqa: F401
+import app.models.metric_value # noqa: F401
+import app.models.job          # noqa: F401
 from app.models.job import Job
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
