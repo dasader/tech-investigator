@@ -12,6 +12,7 @@ def create_tech_input(payload: TechQueryCreate, db: Session = Depends(get_db)):
         category=payload.category,
         description=payload.description,
         user_email=payload.user_email,
+        search_source=payload.search_source,
     )
     db.add(query)
     db.commit()
