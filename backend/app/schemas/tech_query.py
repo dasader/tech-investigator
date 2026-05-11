@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 
 
@@ -7,7 +7,7 @@ class TechQueryCreate(BaseModel):
     category: str
     description: str
     user_email: Optional[str] = None
-    search_source: str = "semantic_scholar"
+    search_source: Literal["semantic_scholar", "scopus"] = "semantic_scholar"
 
 
 class TechQueryOut(BaseModel):

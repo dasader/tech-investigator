@@ -1,3 +1,4 @@
+.env
 .worktrees/
 backend/.env
 frontend/node_modules/

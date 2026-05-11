@@ -23,6 +23,7 @@ async def test_search_returns_list_of_papers():
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = MOCK_SS_RESPONSE
         mock_response.raise_for_status = MagicMock()
         mock_client.get.return_value = mock_response
@@ -39,6 +40,7 @@ async def test_search_filters_empty_abstracts():
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
             "data": [
                 {"paperId": "x1", "title": "Paper 1", "abstract": None, "year": 2023, "citationCount": 10, "externalIds": {}},
@@ -95,6 +97,7 @@ async def test_search_all_sources_uses_semantic_scholar_by_default():
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = MOCK_SS_RESPONSE
         mock_response.raise_for_status = MagicMock()
         mock_client.get.return_value = mock_response
