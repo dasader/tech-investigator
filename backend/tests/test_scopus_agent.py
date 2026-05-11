@@ -116,7 +116,8 @@ async def test_search_filters_entries_without_abstract():
 
 @pytest.mark.asyncio
 async def test_search_raises_on_429():
-    with patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents.scopus_agent.asyncio.sleep"), \
+         patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
@@ -125,3 +126,38 @@ async def test_search_raises_on_429():
 
         with pytest.raises(RuntimeError, match="Scopus API error 429"):
             await search_papers_for_indicator("HBM bandwidth")
+
+
+@pytest.mark.asyncio
+async def test_search_handles_single_affiliation_as_dict():
+    single_aff_response = {
+        "search-results": {
+            "entry": [
+                {
+                    "dc:identifier": "SCOPUS_ID:2",
+                    "dc:title": "Single Affiliation Paper",
+                    "dc:description": "Abstract content here.",
+                    "prism:doi": "10.1/single",
+                    "citedby-count": "5",
+                    "prism:coverDate": "2024-01-01",
+                    "affiliation": {
+                        "affiliation-country": "Japan",
+                        "affilname": "RIKEN",
+                    },
+                }
+            ]
+        }
+    }
+    with patch("app.agents.scopus_agent.asyncio.sleep"), \
+         patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = single_aff_response
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        results = await search_papers_for_indicator("test", max_results=5)
+
+    assert results[0]["country"] == "Japan"

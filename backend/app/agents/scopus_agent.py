@@ -91,17 +91,22 @@ async def search_papers_for_indicator(
         else:
             raise RuntimeError(f"Scopus API error 429: {keywords}")
 
-    papers = [
-        {
-            "paper_id": entry.get("dc:identifier"),
-            "title": entry.get("dc:title", ""),
-            "abstract": entry.get("dc:description", ""),
-            "year": int(entry["prism:coverDate"][:4]) if entry.get("prism:coverDate") else None,
-            "citation_count": int(entry.get("citedby-count") or 0),
-            "doi": entry.get("prism:doi"),
-            "country": _resolve_country(entry.get("affiliation") or []),
-        }
-        for entry in entries
-        if entry.get("dc:description")
-    ]
+    papers = []
+    for entry in entries:
+        if not entry.get("dc:description"):
+            continue
+        aff = entry.get("affiliation") or []
+        if isinstance(aff, dict):
+            aff = [aff]
+        papers.append(
+            {
+                "paper_id": entry.get("dc:identifier"),
+                "title": entry.get("dc:title", ""),
+                "abstract": entry.get("dc:description", ""),
+                "year": int(entry["prism:coverDate"][:4]) if entry.get("prism:coverDate") else None,
+                "citation_count": int(entry.get("citedby-count") or 0),
+                "doi": entry.get("prism:doi"),
+                "country": _resolve_country(aff),
+            }
+        )
     return papers
