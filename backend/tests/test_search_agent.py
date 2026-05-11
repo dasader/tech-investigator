@@ -73,3 +73,32 @@ async def test_search_raises_on_timeout():
         mock_client.get.side_effect = httpx.TimeoutException("timeout")
         with pytest.raises(RuntimeError, match="timeout"):
             await search_papers_for_indicator("HBM bandwidth")
+
+
+@pytest.mark.asyncio
+async def test_search_all_sources_uses_scopus_when_specified():
+    with patch("app.agents.search_agent.scopus_agent") as mock_scopus:
+        mock_scopus.search_papers_for_indicator = AsyncMock(return_value=[
+            {"title": "Scopus Paper", "abstract": "abstract", "doi": None,
+             "year": 2024, "citation_count": 10, "paper_id": "S1", "country": "USA"}
+        ])
+        from app.agents.search_agent import search_all_sources
+        results = await search_all_sources("HBM", source="scopus", max_results=5)
+
+    mock_scopus.search_papers_for_indicator.assert_called_once()
+    assert results[0]["title"] == "Scopus Paper"
+
+
+@pytest.mark.asyncio
+async def test_search_all_sources_uses_semantic_scholar_by_default():
+    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.json.return_value = MOCK_SS_RESPONSE
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+        from app.agents.search_agent import search_all_sources
+        results = await search_all_sources("HBM", max_results=5)
+
+    assert results[0]["title"] == "HBM3E: High Bandwidth Memory"
