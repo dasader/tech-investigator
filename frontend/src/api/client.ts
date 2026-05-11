@@ -2,8 +2,12 @@ import axios from "axios";
 
 const api = axios.create({ baseURL: "/api" });
 
-export const createTechInput = (data: { category: string; description: string; user_email?: string }) =>
-  api.post("/tech-input", data).then(r => r.data);
+export const createTechInput = (data: {
+  category: string;
+  description: string;
+  user_email?: string;
+  search_source?: string;
+}) => api.post("/tech-input", data).then(r => r.data);
 
 export const generateIndicators = (queryId: number) =>
   api.post(`/queries/${queryId}/indicators/generate`).then(r => r.data);
