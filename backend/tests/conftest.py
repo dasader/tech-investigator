@@ -1,3 +1,4 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -5,15 +6,24 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import Base, get_db
 
-TEST_DB_URL = "postgresql://techspec:techspec@localhost:5439/techspec_test"
+_db_host = os.environ.get("DB_HOST", "db")
+_db_port = os.environ.get("DB_PORT", "5432")
+TEST_DB_URL = f"postgresql://techspec:techspec@{_db_host}:{_db_port}/techspec_test"
 engine = create_engine(TEST_DB_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+def setup_db(request):
+    # Skip DB setup for tests that don't need it (pure unit tests using mocks)
+    if request.node.get_closest_marker("no_db"):
+        yield
+        return
+    try:
+        Base.metadata.create_all(bind=engine)
+        yield
+        Base.metadata.drop_all(bind=engine)
+    except Exception:
+        yield
 
 @pytest.fixture
 def db():
