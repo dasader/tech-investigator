@@ -20,27 +20,31 @@ MOCK_EXTRACTION = {
 
 
 def test_full_flow(client):
+    # extract_metrics_from_paper는 [(indicator_id, result_dict), ...] 를 반환
+    async def mock_batch_extract(paper, indicators, semaphore=None):
+        return [(ind["id"], MOCK_EXTRACTION) for ind in indicators]
+
     with patch("app.agents.indicator_agent.generate_indicators", new=AsyncMock(return_value=MOCK_INDICATORS)), \
          patch("app.agents.search_agent.search_all_sources", new=AsyncMock(return_value=MOCK_PAPERS)), \
-         patch("app.agents.extraction_agent.extract_metric_from_paper", return_value=MOCK_EXTRACTION), \
+         patch("app.agents.extraction_agent.extract_metrics_from_paper", new=mock_batch_extract), \
          patch("app.agents.synthesis_agent.build_report_markdown", return_value="# 리포트"):
 
-        res = client.post("/tech-input", json={"category": "반도체", "description": "HBM 기술"})
+        res = client.post("/api/tech-input", json={"category": "반도체", "description": "HBM 기술"})
         assert res.status_code == 200
         query_id = res.json()["id"]
 
-        res = client.post(f"/queries/{query_id}/indicators/generate")
+        res = client.post(f"/api/queries/{query_id}/indicators/generate")
         assert res.status_code == 200
         indicators = res.json()
         assert len(indicators) >= 1
         indicator_id = indicators[0]["id"]
 
-        res = client.put(f"/indicators/{indicator_id}", json={"confirmed_by_user": True})
+        res = client.put(f"/api/indicators/{indicator_id}", json={"confirmed_by_user": True})
         assert res.status_code == 200
 
         with patch("app.routers.jobs.run_pipeline_task") as mock_task:
             mock_task.delay = MagicMock()
-            res = client.post(f"/queries/{query_id}/jobs")
+            res = client.post(f"/api/queries/{query_id}/jobs")
             assert res.status_code == 200
             job_data = res.json()
             assert job_data["status"] == "pending"

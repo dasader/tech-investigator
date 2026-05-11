@@ -3,7 +3,7 @@ from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from sqlalchemy.orm import Session
 from app.agents.search_agent import search_all_sources
-from app.agents.extraction_agent import extract_metric_from_paper
+from app.agents.extraction_agent import extract_metrics_from_paper
 from app.agents.validation_agent import validate_and_rank
 from app.agents.synthesis_agent import build_report_markdown
 from app.models.indicator import Indicator
@@ -53,22 +53,31 @@ async def extract_node(state: PipelineState, db: Session) -> PipelineState:
 
     semaphore = asyncio.Semaphore(10)
 
-    tasks_meta = []
+    paper_groups: dict[str, dict] = {}
     for ind in state["indicators"]:
         papers = state["search_results"].get(ind["id"], [])[:settings.max_papers_per_indicator]
         for paper in papers:
-            tasks_meta.append((ind, paper))
+            # doi → title → year+초록앞부분 순으로 중복 논문을 식별
+            key = (paper.get("doi")
+                   or paper.get("title")
+                   or f"{paper.get('year','')}_{paper.get('abstract','')[:60]}")
+            if key not in paper_groups:
+                paper_groups[key] = {"paper": paper, "indicators": []}
+            paper_groups[key]["indicators"].append(ind)
 
     tasks = [
-        extract_metric_from_paper(paper, ind["name"], ind.get("unit", ""), semaphore)
-        for ind, paper in tasks_meta
+        extract_metrics_from_paper(group["paper"], group["indicators"], semaphore)
+        for group in paper_groups.values()
     ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     extracted: dict = {ind["id"]: [] for ind in state["indicators"]}
-    for (ind, _), result in zip(tasks_meta, results):
-        if not isinstance(result, Exception):
-            extracted[ind["id"]].append(result)
+    for batch in batch_results:
+        if isinstance(batch, Exception):
+            continue
+        for ind_id, result in batch:
+            if ind_id in extracted:
+                extracted[ind_id].append(result)
 
     return {**state, "extracted_values": extracted}
 
@@ -109,7 +118,7 @@ async def synthesize_node(state: PipelineState, db: Session) -> PipelineState:
     }
     from datetime import datetime, timezone
     analyzed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    markdown = await build_report_markdown(state["category"], state["description"], results_by_indicator, analyzed_at)
+    markdown = await build_report_markdown(state["category"], state["description"], results_by_indicator, analyzed_at, state["search_source"])
     return {**state, "report_markdown": markdown}
 
 async def run_pipeline(job_id: int, db: Session) -> str:

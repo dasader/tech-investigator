@@ -1,5 +1,19 @@
+# 환경 변수
 .env
-.worktrees/
 backend/.env
+
+# Python 캐시
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/*.egg-info/
+
+# 프론트엔드 빌드 산출물
 frontend/node_modules/
 frontend/dist/
+
+# 워크트리 / 도구
+.worktrees/
+.superpowers/

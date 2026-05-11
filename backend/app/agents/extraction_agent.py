@@ -4,23 +4,24 @@ import httpx
 from google import genai
 from google.genai import types
 from app.config import settings
-from app.utils import run_sync
+from app.utils import run_sync_with_retry
 
 genai_client = genai.Client(api_key=settings.gemini_api_key)
 
-EXTRACTION_PROMPT = """다음 논문 초록에서 아래 지표의 수치를 추출하세요.
+BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치를 각각 추출하세요.
 
 논문 제목: {title}
 논문 초록: {abstract}
-추출 대상 지표: {indicator_name} (단위: {unit})
 
-JSON 형식으로만 응답하세요. 수치가 없으면 null:
-{{
-  "value": <숫자 또는 null>,
-  "unit": "<단위 또는 null>",
-  "confidence_score": <0.0~1.0>,
-  "quote": "<근거 문장 또는 null>"
-}}"""
+추출 대상 지표 (JSON):
+{indicators_json}
+
+반드시 아래 형식의 JSON 배열로만 응답하세요. 수치가 없으면 value를 null로:
+[
+  {{"indicator_id": <id>, "value": <숫자|null>, "unit": "<단위|null>", "confidence_score": <0.0~1.0>, "quote": "<근거 문장|null>"}},
+  ...
+]
+지표 {n}개 모두 포함하여 정확히 {n}개 항목을 반환하세요."""
 
 _COUNTRY_CODES: dict[str, str] = {
     "US": "USA", "CN": "China", "KR": "South Korea", "JP": "Japan",
@@ -35,6 +36,7 @@ _COUNTRY_CODES: dict[str, str] = {
     "IR": "Iran", "TR": "Turkey", "EG": "Egypt", "ZA": "South Africa",
     "MX": "Mexico", "AR": "Argentina", "CL": "Chile", "CO": "Colombia",
     "PK": "Pakistan", "BD": "Bangladesh", "NG": "Nigeria", "KE": "Kenya",
+    "IQ": "Iraq",
 }
 
 
@@ -61,19 +63,29 @@ async def _get_country_from_openalex(doi: str) -> str | None:
         return None
 
 
-async def extract_metric_from_paper(
+async def extract_metrics_from_paper(
     paper: dict,
-    indicator_name: str,
-    unit: str,
+    indicators: list[dict],
     semaphore: asyncio.Semaphore | None = None,
-) -> dict:
+) -> list[tuple[int, dict]]:
+    """논문 1개에서 여러 지표를 한 번의 Gemini 호출로 추출.
+
+    Returns: [(indicator_id, result_dict), ...]
+    """
+    if not indicators:
+        return []
+
     sem = semaphore or asyncio.Semaphore(1)
     async with sem:
-        prompt = EXTRACTION_PROMPT.format(
-            title=paper["title"],
+        indicators_json = json.dumps(
+            [{"id": ind["id"], "name": ind["name"], "unit": ind.get("unit") or ""} for ind in indicators],
+            ensure_ascii=False,
+        )
+        prompt = BATCH_EXTRACTION_PROMPT.format(
+            title=paper.get("title", ""),
             abstract=paper.get("abstract", ""),
-            indicator_name=indicator_name,
-            unit=unit or "",
+            indicators_json=indicators_json,
+            n=len(indicators),
         )
         doi = paper.get("doi")
 
@@ -83,31 +95,43 @@ async def extract_metric_from_paper(
             return await _get_country_from_openalex(doi) if doi else None
 
         response, country = await asyncio.gather(
-            run_sync(lambda: genai_client.models.generate_content(
+            run_sync_with_retry(lambda: genai_client.models.generate_content(
                 model=settings.gemini_model_complex,
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                ),
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
             )),
             _country_coro(),
         )
 
         text = response.text
         if not text:
-            raise ValueError("Empty response from Gemini extraction")
-        try:
-            result = json.loads(text)
-            if isinstance(result, list):
-                result = result[0] if result else {}
-            if not isinstance(result, dict):
-                result = {}
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON from Gemini extraction: {text[:200]}") from e
+            raise ValueError("Empty response from Gemini batch extraction")
 
-        result["paper_title"] = paper["title"]
-        result["doi"] = doi
-        result["source_url"] = f"https://doi.org/{doi}" if doi else None
-        result["year"] = paper.get("year")
-        result["country"] = country
-        return result
+        try:
+            parsed = json.loads(text)
+            if not isinstance(parsed, list):
+                parsed = [parsed]
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON from Gemini batch extraction: {text[:200]}") from e
+
+        valid_ids = {ind["id"] for ind in indicators}
+        results: list[tuple[int, dict]] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            ind_id = item.get("indicator_id")
+            if ind_id is None or ind_id not in valid_ids:
+                continue
+            results.append((int(ind_id), {
+                "value": item.get("value"),
+                "unit": item.get("unit"),
+                "confidence_score": item.get("confidence_score", 0.0),
+                "quote": item.get("quote"),
+                "paper_title": paper.get("title"),
+                "doi": doi,
+                "source_url": f"https://doi.org/{doi}" if doi else None,
+                "year": paper.get("year"),
+                "country": country,
+            }))
+
+        return results
