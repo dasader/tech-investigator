@@ -16,6 +16,7 @@ class PipelineState(TypedDict):
     query_id: int
     category: str
     description: str
+    search_source: str
     indicators: List[dict]
     search_results: dict      # indicator_id -> list of papers
     extracted_values: dict    # indicator_id -> list of extractions
@@ -32,9 +33,14 @@ def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str
 
 async def search_node(state: PipelineState, db: Session) -> PipelineState:
     _update_job(db, state["job_id"], 10.0, "논문 검색 중")
+    semaphore = asyncio.Semaphore(1)
     results = {}
     tasks = [
-        search_all_sources(ind["search_keywords"] or ind["name"])
+        search_all_sources(
+            ind["search_keywords"] or ind["name"],
+            source=state["search_source"],
+            semaphore=semaphore,
+        )
         for ind in state["indicators"]
     ]
     paper_lists = await asyncio.gather(*tasks)
@@ -123,6 +129,7 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "query_id": job.query_id,
         "category": query.category,
         "description": query.description,
+        "search_source": query.search_source or "semantic_scholar",
         "indicators": [
             {"id": i.id, "name": i.name, "unit": i.unit, "search_keywords": i.search_keywords}
             for i in indicators
