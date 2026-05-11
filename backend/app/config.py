@@ -5,9 +5,12 @@ class Settings(BaseSettings):
     gemini_model_complex: str = "gemini-2.5-pro"
     gemini_model_fast: str = "gemini-2.5-flash"
     semantic_scholar_api_key: str = ""
+    elsevier_api_key: str = ""
     job_timeout_minutes: int = 15
     max_papers_per_indicator: int = 30
     min_confidence_score: float = 0.5
+    search_year_from: int | None = None
+    frontend_url: str = "http://localhost:8098"
     database_url: str
     redis_url: str = "redis://redis:6379/0"
     minio_endpoint: str = "minio:9000"
