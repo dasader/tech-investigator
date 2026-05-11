@@ -78,6 +78,8 @@ async def extract_metric_from_paper(
         doi = paper.get("doi")
 
         async def _country_coro() -> str | None:
+            if paper.get("country") is not None:
+                return paper["country"]
             return await _get_country_from_openalex(doi) if doi else None
 
         response, country = await asyncio.gather(
