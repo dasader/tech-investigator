@@ -1,3 +1,145 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --font-heading: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body:    'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-data: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+
+  --color-bg: #f2f1ed;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f7f4;
+  --color-navy: #192340;
+  --color-navy-dark: #0d1628;
+  --color-navy-mid: #243358;
+  --color-navy-subtle: #e6eaf4;
+  --color-amber: #c07010;
+  --color-amber-light: #fef4e3;
+  --color-blue-data: #1d4ed8;
+  --color-teal: #0d7a6f;
+  --color-text: #1a2a3a;
+  --color-text-2: #3b506a;
+  --color-text-3: #6b7f96;
+  --color-text-inv: #e8edf5;
+  --color-border: #d0d8e8;
+  --color-border-subtle: #e8ecf2;
+  --color-success: #15803d;
+  --color-warn: #b45309;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.65;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+h1, h2, h3, .heading {
+  font-family: var(--font-heading);
+  line-height: 1.25;
+  word-break: keep-all;
+}
+
+/* Mono for data values */
+.font-data, .data-value {
+  font-family: var(--font-data);
+}
+
+/* Progress bar animation */
+@keyframes progress-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.progress-bar-animated {
+  background: linear-gradient(
+    90deg,
+    var(--color-amber) 0%,
+    #e8a030 40%,
+    var(--color-amber) 80%
+  );
+  background-size: 200% auto;
+  animation: progress-shimmer 2s linear infinite;
+}
+
+/* Fade-in for cards */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+.fade-up-1 { animation-delay: 0.05s; }
+.fade-up-2 { animation-delay: 0.10s; }
+.fade-up-3 { animation-delay: 0.15s; }
+.fade-up-4 { animation-delay: 0.20s; }
+
+/* ── Queue waiting animations ─────────────────────────────────────────────── */
+@keyframes ring-expand {
+  0%   { opacity: 0.22; transform: scale(0.92); }
+  60%  { opacity: 0;    transform: scale(1.35); }
+  100% { opacity: 0;    transform: scale(1.35); }
+}
+@keyframes ring-pulse {
+  0%, 100% { opacity: 0.18; transform: scale(1); }
+  50%       { opacity: 0.08; transform: scale(1.06); }
+}
+@keyframes dot-wave {
+  0%, 80%, 100% { transform: scaleY(0.5); opacity: 0.35; }
+  40%           { transform: scaleY(1);   opacity: 1; }
+}
+.queue-ring-far  { animation: ring-expand 2.4s ease-out infinite; }
+.queue-ring-near { animation: ring-expand 2.4s ease-out infinite 0.8s; }
+.queue-ring-bg   { animation: ring-pulse  2.8s ease-in-out infinite; }
+.queue-bar       { animation: dot-wave 1.3s ease-in-out infinite; }
+.queue-bar-2     { animation: dot-wave 1.3s ease-in-out infinite 0.13s; }
+.queue-bar-3     { animation: dot-wave 1.3s ease-in-out infinite 0.26s; }
+
+/* ── Step spinner ─────────────────────────────────────────────────────────── */
+@keyframes step-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.step-spin {
+  border: 2px solid transparent;
+  border-top-color: var(--color-amber);
+  border-right-color: rgba(192, 112, 16, 0.3);
+  animation: step-spin 0.9s linear infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-3); }
+
+/* ── Print (데이터 탭 직접 인쇄) ──────────────────────────────────────────── */
+@media print {
+  body.printing-data header,
+  body.printing-data .no-print {
+    display: none !important;
+  }
+  body.printing-data {
+    background: white !important;
+  }
+  body.printing-data * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

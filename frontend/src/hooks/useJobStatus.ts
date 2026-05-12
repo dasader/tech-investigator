@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 
-interface JobStatus {
+export interface JobStatus {
   status: string;
   progress_pct: number;
   current_step: string | null;
+  queue_position: number | null;
 }
 
 export function useJobStatus(jobId: number | null) {
@@ -11,7 +12,8 @@ export function useJobStatus(jobId: number | null) {
 
   useEffect(() => {
     if (!jobId) return;
-    const ws = new WebSocket(`ws://localhost:8017/ws/jobs/${jobId}`);
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/jobs/${jobId}`);
     ws.onmessage = (e) => setStatus(JSON.parse(e.data) as JobStatus);
     return () => ws.close();
   }, [jobId]);

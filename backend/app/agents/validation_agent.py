@@ -16,4 +16,4 @@ def validate_and_rank(extractions: list[dict], min_confidence: float | None = No
         if e.get("value") is not None and _to_float(e.get("confidence_score", 0)) >= min_conf
     ]
     valid.sort(key=lambda x: (_to_float(x.get("value")), _to_float(x.get("confidence_score"))), reverse=True)
-    return valid[:3]
+    return valid[:settings.top_results_per_indicator]

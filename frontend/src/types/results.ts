@@ -5,6 +5,7 @@ export interface MetricValue {
   country: string | null;
   confidence_score: number;
   paper_title: string | null;
+  journal_name: string | null;
   doi: string | null;
   source_url: string | null;
   quote: string | null;

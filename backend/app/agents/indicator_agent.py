@@ -1,8 +1,8 @@
 import json
-import asyncio
 from google import genai
 from google.genai import types
 from app.config import settings
+from app.utils import run_sync_with_retry
 
 genai_client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -27,9 +27,7 @@ INDICATOR_PROMPT = """당신은 국가전략기술 분야의 전문가입니다.
 
 async def generate_indicators(category: str, description: str) -> list[dict]:
     prompt = INDICATOR_PROMPT.format(category=category, description=description)
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
+    response = await run_sync_with_retry(
         lambda: genai_client.models.generate_content(
             model=settings.gemini_model_complex,
             contents=prompt,

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import httpx
 from google import genai
 from google.genai import types
@@ -15,6 +16,13 @@ BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치�
 
 추출 대상 지표 (JSON):
 {indicators_json}
+
+단위 처리 규칙:
+1. 각 지표에 unit이 지정된 경우, 논문의 수치를 해당 단위로 환산하여 반환하세요.
+   예) 지표 단위가 "nm"이고 논문이 "1.2 μm"를 보고하면 → value: 1200, unit: "nm"
+2. 단위 환산이 불가능한 경우(물리량 자체가 다른 경우, 예: pieces/mL ↔ cells/mL)는 value를 null로 처리하세요.
+3. 지표에 unit이 없으면 논문의 단위를 그대로 반환하세요.
+4. 응답의 unit 필드는 항상 지표의 정의된 단위를 사용하세요 (논문 표기 단위가 아님).
 
 반드시 아래 형식의 JSON 배열로만 응답하세요. 수치가 없으면 value를 null로:
 [
@@ -75,6 +83,9 @@ async def extract_metrics_from_paper(
     if not indicators:
         return []
 
+    if not re.search(r'\d', paper.get("abstract", "")):
+        return []
+
     sem = semaphore or asyncio.Semaphore(1)
     async with sem:
         indicators_json = json.dumps(
@@ -96,7 +107,7 @@ async def extract_metrics_from_paper(
 
         response, country = await asyncio.gather(
             run_sync_with_retry(lambda: genai_client.models.generate_content(
-                model=settings.gemini_model_complex,
+                model=settings.gemini_model_fast,
                 contents=prompt,
                 config=types.GenerateContentConfig(response_mime_type="application/json"),
             )),
@@ -128,6 +139,7 @@ async def extract_metrics_from_paper(
                 "confidence_score": item.get("confidence_score", 0.0),
                 "quote": item.get("quote"),
                 "paper_title": paper.get("title"),
+                "journal_name": paper.get("journal_name"),
                 "doi": doi,
                 "source_url": f"https://doi.org/{doi}" if doi else None,
                 "year": paper.get("year"),

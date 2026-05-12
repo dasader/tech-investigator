@@ -4,7 +4,7 @@ from app.config import settings
 from app.agents import scopus_agent
 
 SS_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds"
+SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds,venue"
 
 
 async def search_papers_for_indicator(
@@ -52,6 +52,7 @@ async def search_papers_for_indicator(
             "year": p.get("year"),
             "citation_count": p.get("citationCount", 0),
             "doi": (p.get("externalIds") or {}).get("DOI"),
+            "journal_name": p.get("venue") or None,
             "country": None,
         }
         for p in data

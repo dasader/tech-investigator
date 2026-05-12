@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import MetricTable from "../components/MetricTable";
-import TimeSeriesChart from "../components/TimeSeriesChart";
-import CountryCompareChart from "../components/CountryCompareChart";
 import { getResults } from "../api/client";
-import { exportDataAsPdf, exportReportAsPdf } from "../utils/exportPdf";
+import { printCurrentView, exportReportAsPdf } from "../utils/exportPdf";
 import { getEngineLabel } from "../utils/format";
 import type { ResultsData } from "../types/results";
 
@@ -107,7 +105,6 @@ function PdfButton({ label, progress, onClick }: { label: string; progress: stri
 export default function ResultsPage({ jobId }: Props) {
   const [results,           setResults]           = useState<ResultsData | null>(null);
   const [tab,               setTab]               = useState<Tab>("report");
-  const [pdfProgress,       setPdfProgress]       = useState<string | null>(null);
   const [reportPdfProgress, setReportPdfProgress] = useState<string | null>(null);
 
   useEffect(() => {
@@ -142,8 +139,7 @@ export default function ResultsPage({ jobId }: Props) {
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
 
-      {/* Page header */}
-      <div className="mb-8 fade-up">
+      <div className="mb-8 fade-up no-print">
         <h2
           className="text-3xl font-bold tracking-tight"
           style={{ fontFamily: "var(--font-heading)", color: "var(--color-navy-dark)" }}
@@ -161,12 +157,12 @@ export default function ResultsPage({ jobId }: Props) {
         )}
       </div>
 
-      {/* Summary banner */}
-      <SummaryBanner data={results} />
+      <div className="no-print">
+        <SummaryBanner data={results} />
+      </div>
 
-      {/* Tabs + PDF button */}
       <div
-        className="flex items-center justify-between mb-8 fade-up fade-up-1"
+        className="flex items-center justify-between mb-8 fade-up fade-up-1 no-print"
         style={{ borderBottom: "1px solid var(--color-border)" }}
       >
         <div className="flex">
@@ -185,8 +181,8 @@ export default function ResultsPage({ jobId }: Props) {
         {tab === "data" && (
           <PdfButton
             label="데이터 PDF 저장"
-            progress={pdfProgress}
-            onClick={() => handlePdfExport(exportDataAsPdf, setPdfProgress)}
+            progress={null}
+            onClick={printCurrentView}
           />
         )}
       </div>
@@ -233,49 +229,6 @@ export default function ResultsPage({ jobId }: Props) {
             <MetricTable data={results.indicators} />
           </section>
 
-          {results.indicators.some(i => i.metric_values.some(v => v.year && v.value != null)) && (
-            <section>
-              <h3
-                className="text-lg font-semibold mb-5"
-                style={{ fontFamily: "var(--font-heading)", color: "var(--color-navy-dark)" }}
-              >
-                연도별 추이 차트
-              </h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {results.indicators.map((item, i) => (
-                  <div key={item.indicator.name} id={`chart-ts-${i}`}>
-                    <TimeSeriesChart
-                      indicatorName={item.indicator.name}
-                      values={item.metric_values}
-                      unit={item.indicator.unit}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {results.indicators.some(i => i.metric_values.some(v => v.country && v.value != null)) && (
-            <section>
-              <h3
-                className="text-lg font-semibold mb-5"
-                style={{ fontFamily: "var(--font-heading)", color: "var(--color-navy-dark)" }}
-              >
-                국가별 비교 차트
-              </h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {results.indicators.map((item, i) => (
-                  <div key={item.indicator.name} id={`chart-cc-${i}`}>
-                    <CountryCompareChart
-                      indicatorName={item.indicator.name}
-                      values={item.metric_values}
-                      unit={item.indicator.unit}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       )}
     </div>

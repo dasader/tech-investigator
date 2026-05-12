@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     elsevier_api_key: str = ""
     job_timeout_minutes: int = 15
     max_papers_per_indicator: int = 30
+    top_results_per_indicator: int = 5
     min_confidence_score: float = 0.5
     search_year_from: int | None = None
     frontend_url: str = "http://localhost:8098"

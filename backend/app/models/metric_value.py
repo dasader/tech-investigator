@@ -15,6 +15,7 @@ class MetricValue(Base):
     country = Column(String(100), nullable=True)
     confidence_score = Column(Float, default=0.0)
     paper_title = Column(Text, nullable=True)
+    journal_name = Column(String(300), nullable=True)
     doi = Column(String(200), nullable=True)
     source_url = Column(Text, nullable=True)
     quote = Column(Text, nullable=True)

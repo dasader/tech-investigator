@@ -102,6 +102,7 @@ async def validate_node(state: PipelineState, db: Session) -> PipelineState:
                 country=mv_data.get("country"),
                 confidence_score=mv_data.get("confidence_score", 0.0),
                 paper_title=mv_data.get("paper_title"),
+                journal_name=mv_data.get("journal_name"),
                 doi=mv_data.get("doi"),
                 source_url=mv_data.get("source_url"),
                 quote=mv_data.get("quote"),
