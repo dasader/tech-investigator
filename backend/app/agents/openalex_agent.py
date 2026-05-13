@@ -58,6 +58,7 @@ async def search_papers_for_indicator(
     params: dict = {
         "search": keywords,
         "per-page": min(max_results, 200),
+        "sort": "cited_by_count:desc",
     }
     if settings.openalex_api_key:
         params["api_key"] = settings.openalex_api_key

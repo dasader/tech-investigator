@@ -156,3 +156,20 @@ async def test_search_country_none_when_no_institutions():
         results = await search_papers_for_indicator("test", max_results=5)
     assert results[0]["country"] is None
     assert results[0]["journal_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_search_uses_cited_by_count_sort():
+    with patch("app.agents.openalex_agent.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        await search_papers_for_indicator("test", max_results=5)
+
+    _, kwargs = mock_client.get.call_args
+    assert kwargs.get("params", {}).get("sort") == "cited_by_count:desc"
