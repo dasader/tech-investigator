@@ -7,13 +7,16 @@ interface Props { onNext: (queryId: number) => void; }
 const SOURCE_OPTIONS = [
   { value: "semantic_scholar", label: "Semantic Scholar" },
   { value: "scopus",           label: "Scopus (Elsevier)" },
+  { value: "openalex",         label: "OpenAlex" },
 ] as const;
+
+type SearchSource = typeof SOURCE_OPTIONS[number]["value"];
 
 export default function InputPage({ onNext }: Props) {
   const [category,      setCategory]      = useState("");
   const [description,   setDescription]   = useState("");
   const [email,         setEmail]         = useState("");
-  const [searchSource,  setSearchSource]  = useState<"semantic_scholar" | "scopus">("semantic_scholar");
+  const [searchSource,  setSearchSource]  = useState<SearchSource>("semantic_scholar");
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState("");
 
@@ -36,9 +39,8 @@ export default function InputPage({ onNext }: Props) {
     }
   };
 
-  const sourceLabel = searchSource === "scopus"
-    ? "Scopus (Elsevier)"
-    : "Semantic Scholar";
+  const sourceLabel =
+    SOURCE_OPTIONS.find((o) => o.value === searchSource)?.label ?? "Semantic Scholar";
 
   return (
     <div className="min-h-[calc(100vh-61px)] flex items-center justify-center px-4 py-16">
@@ -76,7 +78,7 @@ export default function InputPage({ onNext }: Props) {
                 논문 데이터 소스
               </label>
               <div className="flex rounded-lg overflow-hidden" style={{ border: "1.5px solid var(--color-border)" }}>
-                {SOURCE_OPTIONS.map((opt) => {
+                {SOURCE_OPTIONS.map((opt, i) => {
                   const active = searchSource === opt.value;
                   return (
                     <button
@@ -87,7 +89,7 @@ export default function InputPage({ onNext }: Props) {
                       style={{
                         background: active ? "var(--color-navy-dark)" : "var(--color-surface-2)",
                         color: active ? "var(--color-text-inv)" : "var(--color-text-3)",
-                        borderRight: opt.value === "semantic_scholar" ? "1px solid var(--color-border)" : undefined,
+                        borderRight: i < SOURCE_OPTIONS.length - 1 ? "1px solid var(--color-border)" : undefined,
                       }}
                     >
                       {opt.label}
