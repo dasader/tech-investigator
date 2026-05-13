@@ -58,7 +58,7 @@ MOCK_OPENALEX_RESPONSE = {
 
 @pytest.mark.asyncio
 async def test_search_returns_normalized_papers(httpx_mock_get):
-    httpx_mock_get("app.agents.openalex_agent", json_body=MOCK_OPENALEX_RESPONSE)
+    httpx_mock_get("app.agents._http_retry", json_body=MOCK_OPENALEX_RESPONSE)
     results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
 
     assert len(results) == 1
@@ -88,15 +88,15 @@ async def test_search_filters_entries_without_abstract(httpx_mock_get):
             }
         ]
     }
-    httpx_mock_get("app.agents.openalex_agent", json_body=no_abs)
+    httpx_mock_get("app.agents._http_retry", json_body=no_abs)
     results = await search_papers_for_indicator("test", max_results=5)
     assert results == []
 
 
 @pytest.mark.asyncio
 async def test_search_raises_on_429(httpx_mock_get, monkeypatch):
-    monkeypatch.setattr("app.agents.openalex_agent.asyncio.sleep", AsyncMock())
-    httpx_mock_get("app.agents.openalex_agent", status_code=429)
+    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+    httpx_mock_get("app.agents._http_retry", status_code=429)
     with pytest.raises(RuntimeError, match="OpenAlex API error 429"):
         await search_papers_for_indicator("HBM bandwidth")
 
@@ -117,7 +117,7 @@ async def test_search_country_none_when_no_institutions(httpx_mock_get):
             }
         ]
     }
-    httpx_mock_get("app.agents.openalex_agent", json_body=no_inst)
+    httpx_mock_get("app.agents._http_retry", json_body=no_inst)
     results = await search_papers_for_indicator("test", max_results=5)
     assert results[0]["country"] is None
     assert results[0]["journal_name"] is None
@@ -125,7 +125,7 @@ async def test_search_country_none_when_no_institutions(httpx_mock_get):
 
 @pytest.mark.asyncio
 async def test_search_uses_cited_by_count_sort(httpx_mock_get):
-    mock_client = httpx_mock_get("app.agents.openalex_agent", json_body={"results": []})
+    mock_client = httpx_mock_get("app.agents._http_retry", json_body={"results": []})
     await search_papers_for_indicator("test", max_results=5)
 
     _, kwargs = mock_client.get.call_args

@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 import httpx
 from app.config import settings
+from app.agents._http_retry import get_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -103,30 +104,16 @@ async def search_papers_for_indicator(
         params["date"] = f"{settings.search_year_from}-{datetime.now().year}"
 
     sem = semaphore or asyncio.Semaphore(1)
-    entries: list = []
     async with sem:
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    response = await client.get(SCOPUS_API_URL, params=params, headers=headers)
-                    if response.status_code == 429:
-                        await asyncio.sleep(10 * (attempt + 1))
-                        continue
-                    response.raise_for_status()
-                    entries = (
-                        response.json()
-                        .get("search-results", {})
-                        .get("entry", [])
-                    )
-                    break
-            except httpx.TimeoutException:
-                raise RuntimeError(f"Scopus API timeout for: {keywords}")
-            except httpx.RequestError as e:
-                raise RuntimeError(f"Scopus network error: {keywords}") from e
-            finally:
-                await asyncio.sleep(1.1)
-        else:
-            raise RuntimeError(f"Scopus API error 429: {keywords}")
+        payload = await get_with_retry(
+            SCOPUS_API_URL,
+            params=params,
+            headers=headers,
+            service_name="Scopus",
+            context=keywords,
+            inter_attempt_sleep=1.1,
+        )
+        entries = payload.get("search-results", {}).get("entry", [])
 
     papers = []
     for entry in entries:
@@ -146,6 +133,11 @@ async def search_papers_for_indicator(
             }
         )
 
+    total = len(papers)
+    scopus_has_abstract = sum(1 for p in papers if p.get("abstract"))
+    logger.info("[ABSTRACT-STAT] Scopus Search 결과: 총 %d건, abstract 있음 %d건 (%.0f%%)",
+                total, scopus_has_abstract, (scopus_has_abstract / total * 100) if total else 0)
+
     # Scopus free tier는 abstract를 반환하지 않으므로 S2 batch API로 보완
     doi_missing = [p["doi"] for p in papers if not p["abstract"] and p.get("doi")]
     if doi_missing:
@@ -153,5 +145,12 @@ async def search_papers_for_indicator(
         for p in papers:
             if p.get("doi") and p["doi"] in abstracts:
                 p["abstract"] = abstracts[p["doi"]]
+
+    after_s2 = sum(1 for p in papers if p.get("abstract"))
+    s2_recovered = after_s2 - scopus_has_abstract
+    no_doi = sum(1 for p in papers if not p.get("abstract") and not p.get("doi"))
+    final_dropped = total - after_s2
+    logger.info("[ABSTRACT-STAT] S2 보완 후: abstract 있음 %d건, S2로 복구 %d건, DOI 없어서 복구 불가 %d건, 최종 제거 %d건 (%.0f%%)",
+                after_s2, s2_recovered, no_doi, final_dropped, (final_dropped / total * 100) if total else 0)
 
     return [p for p in papers if p.get("abstract")]

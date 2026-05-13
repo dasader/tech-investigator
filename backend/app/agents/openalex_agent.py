@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import httpx
 from app.config import settings
 from app.agents.country_codes import COUNTRY_CODES
+from app.agents._http_retry import get_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -67,26 +67,13 @@ async def search_papers_for_indicator(
         params["filter"] = f"from_publication_date:{settings.search_year_from}-01-01"
 
     sem = semaphore or asyncio.Semaphore(1)
-    data: dict = {}
     async with sem:
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    response = await client.get(OPENALEX_API_URL, params=params)
-                    if response.status_code == 429:
-                        await asyncio.sleep(10 * (attempt + 1))
-                        continue
-                    response.raise_for_status()
-                    data = response.json()
-                    break
-            except httpx.TimeoutException:
-                raise RuntimeError(f"OpenAlex API timeout for: {keywords}")
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(f"OpenAlex API error {e.response.status_code}: {keywords}") from e
-            except httpx.RequestError as e:
-                raise RuntimeError(f"OpenAlex network error: {keywords}") from e
-        else:
-            raise RuntimeError(f"OpenAlex API error 429: {keywords}")
+        data = await get_with_retry(
+            OPENALEX_API_URL,
+            params=params,
+            service_name="OpenAlex",
+            context=keywords,
+        )
 
     results = data.get("results", []) or []
     papers: list[dict] = []

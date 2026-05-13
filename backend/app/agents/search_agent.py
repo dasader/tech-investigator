@@ -1,7 +1,7 @@
 import asyncio
-import httpx
 from app.config import settings
 from app.agents import scopus_agent, openalex_agent
+from app.agents._http_retry import get_with_retry
 
 SS_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds,venue"
@@ -23,26 +23,15 @@ async def search_papers_for_indicator(
 
     sem = semaphore or asyncio.Semaphore(1)
     async with sem:
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    response = await client.get(SS_API_URL, params=params, headers=headers)
-                    if response.status_code == 429:
-                        await asyncio.sleep(10 * (attempt + 1))
-                        continue
-                    response.raise_for_status()
-                    data = response.json().get("data", [])
-                    break
-            except httpx.TimeoutException:
-                raise RuntimeError(f"Semantic Scholar API timeout for: {keywords}")
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(f"Semantic Scholar API error {e.response.status_code}: {keywords}") from e
-            except httpx.RequestError as e:
-                raise RuntimeError(f"Semantic Scholar network error: {keywords}") from e
-            finally:
-                await asyncio.sleep(1.1)
-        else:
-            raise RuntimeError(f"Semantic Scholar API error 429: {keywords}")
+        payload = await get_with_retry(
+            SS_API_URL,
+            params=params,
+            headers=headers,
+            service_name="Semantic Scholar",
+            context=keywords,
+            inter_attempt_sleep=1.1,
+        )
+        data = payload.get("data", [])
 
     papers = [
         {

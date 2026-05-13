@@ -19,7 +19,7 @@ MOCK_SS_RESPONSE = {
 
 @pytest.mark.asyncio
 async def test_search_returns_list_of_papers():
-    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
@@ -36,7 +36,7 @@ async def test_search_returns_list_of_papers():
 
 @pytest.mark.asyncio
 async def test_search_filters_empty_abstracts():
-    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
@@ -55,7 +55,7 @@ async def test_search_filters_empty_abstracts():
 
 @pytest.mark.asyncio
 async def test_search_raises_on_http_error():
-    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client.get.side_effect = httpx.HTTPStatusError(
@@ -69,7 +69,7 @@ async def test_search_raises_on_http_error():
 
 @pytest.mark.asyncio
 async def test_search_raises_on_timeout():
-    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client.get.side_effect = httpx.TimeoutException("timeout")
@@ -93,7 +93,7 @@ async def test_search_all_sources_uses_scopus_when_specified():
 
 @pytest.mark.asyncio
 async def test_search_all_sources_uses_semantic_scholar_by_default():
-    with patch("app.agents.search_agent.httpx.AsyncClient") as mock_client_class:
+    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_response = MagicMock()
