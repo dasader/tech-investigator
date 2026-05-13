@@ -59,8 +59,8 @@ async def search_papers_for_indicator(
         "search": keywords,
         "per-page": min(max_results, 200),
     }
-    if settings.openalex_email:
-        params["mailto"] = settings.openalex_email
+    if settings.openalex_api_key:
+        params["api_key"] = settings.openalex_api_key
     if settings.search_year_from:
         params["filter"] = f"from_publication_date:{settings.search_year_from}-01-01"
 
