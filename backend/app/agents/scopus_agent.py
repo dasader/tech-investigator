@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import logging
-import httpx
+import httpx  # used directly in _batch_fetch_abstracts (POST); GET retries go through get_with_retry
 from app.config import settings
 from app.agents._http_retry import get_with_retry
 
