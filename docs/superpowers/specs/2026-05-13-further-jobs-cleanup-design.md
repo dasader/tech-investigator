@@ -124,7 +124,7 @@ results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
 
 ### 부수 정리
 
-- `test_scopus_agent.py`에 `pytestmark = pytest.mark.no_db` 추가 (현재 누락, `test_openalex_agent.py`만 보유)
+- ~~`test_scopus_agent.py`에 `pytestmark = pytest.mark.no_db` 추가 (현재 누락, `test_openalex_agent.py`만 보유)~~ — 2026-05-14 정정: marker는 이미 존재했음. 부수 정리 항목 아님.
 - 두 테스트 파일의 `from unittest.mock import AsyncMock, patch, MagicMock` 제거 — fixture가 책임
 
 ---

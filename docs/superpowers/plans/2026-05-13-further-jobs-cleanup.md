@@ -528,8 +528,7 @@ git commit -m "refactor(tests): extract httpx_mock_get fixture
 Move the six-line httpx.AsyncClient mock setup duplicated across ten
 search tests into a single conftest fixture. Tests now patch via
 monkeypatch and a one-line factory call, and inspect call_args through
-the returned mock_client. Also add the missing pytest.mark.no_db marker
-to test_scopus_agent so DB setup is explicitly skipped."
+the returned mock_client."
 ```
 
 ---

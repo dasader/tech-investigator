@@ -6,6 +6,8 @@ OpenAlex 통합 (`feat/openalex-search`) 진행 중 `/simplify` 리뷰에서 발
 
 ## A. Skipped from `/simplify` (별도 PR 권장)
 
+> **Status (2026-05-14):** A1, A4 완료 — `chore/further-jobs-cleanup` 브랜치. A2, A3은 미해결.
+
 ### A1. 3-way HTTP retry 루프 공통화
 
 - **위치**
@@ -61,6 +63,8 @@ OpenAlex 통합 (`feat/openalex-search`) 진행 중 `/simplify` 리뷰에서 발
 ---
 
 ## B. 사전 버그 (master 시점부터 존재)
+
+> **Status (2026-05-14):** B1 완료 — `chore/further-jobs-cleanup` 브랜치.
 
 ### B1. `test_extraction_agent.py`의 잘못된 import
 
