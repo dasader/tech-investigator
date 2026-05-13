@@ -31,7 +31,7 @@ BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치�
 ]
 지표 {n}개 모두 포함하여 정확히 {n}개 항목을 반환하세요."""
 
-_COUNTRY_CODES: dict[str, str] = {
+COUNTRY_CODES: dict[str, str] = {
     "US": "USA", "CN": "China", "KR": "South Korea", "JP": "Japan",
     "DE": "Germany", "GB": "UK", "FR": "France", "CH": "Switzerland",
     "AU": "Australia", "CA": "Canada", "IN": "India", "SG": "Singapore",
@@ -66,7 +66,7 @@ async def _get_country_from_openalex(doi: str) -> str | None:
         code = institutions[0].get("country_code")
         if not code:
             return None
-        return _COUNTRY_CODES.get(code, code)
+        return COUNTRY_CODES.get(code, code)
     except Exception:
         return None
 
