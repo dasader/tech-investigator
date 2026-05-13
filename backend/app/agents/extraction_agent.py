@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 from app.config import settings
 from app.utils import run_sync_with_retry
+from app.agents.country_codes import COUNTRY_CODES
 
 genai_client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -31,23 +32,6 @@ BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치�
 ]
 지표 {n}개 모두 포함하여 정확히 {n}개 항목을 반환하세요."""
 
-_COUNTRY_CODES: dict[str, str] = {
-    "US": "USA", "CN": "China", "KR": "South Korea", "JP": "Japan",
-    "DE": "Germany", "GB": "UK", "FR": "France", "CH": "Switzerland",
-    "AU": "Australia", "CA": "Canada", "IN": "India", "SG": "Singapore",
-    "TW": "Taiwan", "SE": "Sweden", "NL": "Netherlands", "IT": "Italy",
-    "ES": "Spain", "IL": "Israel", "DK": "Denmark", "FI": "Finland",
-    "BE": "Belgium", "AT": "Austria", "NO": "Norway", "NZ": "New Zealand",
-    "BR": "Brazil", "RU": "Russia", "SA": "Saudi Arabia", "AE": "UAE",
-    "MY": "Malaysia", "TH": "Thailand", "ID": "Indonesia", "VN": "Vietnam",
-    "PL": "Poland", "CZ": "Czech Republic", "HU": "Hungary", "PT": "Portugal",
-    "IR": "Iran", "TR": "Turkey", "EG": "Egypt", "ZA": "South Africa",
-    "MX": "Mexico", "AR": "Argentina", "CL": "Chile", "CO": "Colombia",
-    "PK": "Pakistan", "BD": "Bangladesh", "NG": "Nigeria", "KE": "Kenya",
-    "IQ": "Iraq",
-}
-
-
 async def _get_country_from_openalex(doi: str) -> str | None:
     try:
         url = f"https://api.openalex.org/works/doi:{doi}"
@@ -66,7 +50,7 @@ async def _get_country_from_openalex(doi: str) -> str | None:
         code = institutions[0].get("country_code")
         if not code:
             return None
-        return _COUNTRY_CODES.get(code, code)
+        return COUNTRY_CODES.get(code, code)
     except Exception:
         return None
 
@@ -103,6 +87,8 @@ async def extract_metrics_from_paper(
         async def _country_coro() -> str | None:
             if paper.get("country") is not None:
                 return paper["country"]
+            if paper.get("country_lookup_done"):
+                return None
             return await _get_country_from_openalex(doi) if doi else None
 
         response, country = await asyncio.gather(

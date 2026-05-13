@@ -33,7 +33,11 @@ async def run_sync_with_retry(fn, max_retries: int = 4, base_delay: float = 1.0)
 
 
 def get_engine_label(search_source: str) -> str:
-    return "Scopus (Elsevier) + Gemini" if search_source == "scopus" else "Semantic Scholar + Gemini"
+    if search_source == "scopus":
+        return "Scopus (Elsevier) + Gemini"
+    if search_source == "openalex":
+        return "OpenAlex + Gemini"
+    return "Semantic Scholar + Gemini"
 
 
 def get_search_source(db: Session, query_id: int) -> str:
