@@ -2,7 +2,7 @@ import asyncio
 import logging
 import httpx
 from app.config import settings
-from app.agents.extraction_agent import COUNTRY_CODES
+from app.agents.country_codes import COUNTRY_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,9 @@ def _strip_doi_prefix(doi: str | None) -> str | None:
     if not doi:
         return None
     for prefix in ("https://doi.org/", "http://doi.org/", "doi.org/"):
-        if doi.startswith(prefix):
-            return doi[len(prefix):]
+        stripped = doi.removeprefix(prefix)
+        if stripped != doi:
+            return stripped
     return doi
 
 
@@ -84,8 +85,6 @@ async def search_papers_for_indicator(
                 raise RuntimeError(f"OpenAlex API error {e.response.status_code}: {keywords}") from e
             except httpx.RequestError as e:
                 raise RuntimeError(f"OpenAlex network error: {keywords}") from e
-            finally:
-                await asyncio.sleep(0.2)
         else:
             raise RuntimeError(f"OpenAlex API error 429: {keywords}")
 
@@ -104,6 +103,10 @@ async def search_papers_for_indicator(
             "doi": _strip_doi_prefix(item.get("doi")),
             "journal_name": _resolve_journal(item.get("primary_location")),
             "country": _resolve_country(item.get("authorships") or []),
+            # OpenAlex already exposed authorships here — a None country means
+            # the work has no institutional affiliation. Tell extraction_agent
+            # not to re-query the same /works endpoint for this paper.
+            "country_lookup_done": True,
         })
 
     logger.info(

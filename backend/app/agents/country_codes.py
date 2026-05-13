@@ -1,0 +1,15 @@
+COUNTRY_CODES: dict[str, str] = {
+    "US": "USA", "CN": "China", "KR": "South Korea", "JP": "Japan",
+    "DE": "Germany", "GB": "UK", "FR": "France", "CH": "Switzerland",
+    "AU": "Australia", "CA": "Canada", "IN": "India", "SG": "Singapore",
+    "TW": "Taiwan", "SE": "Sweden", "NL": "Netherlands", "IT": "Italy",
+    "ES": "Spain", "IL": "Israel", "DK": "Denmark", "FI": "Finland",
+    "BE": "Belgium", "AT": "Austria", "NO": "Norway", "NZ": "New Zealand",
+    "BR": "Brazil", "RU": "Russia", "SA": "Saudi Arabia", "AE": "UAE",
+    "MY": "Malaysia", "TH": "Thailand", "ID": "Indonesia", "VN": "Vietnam",
+    "PL": "Poland", "CZ": "Czech Republic", "HU": "Hungary", "PT": "Portugal",
+    "IR": "Iran", "TR": "Turkey", "EG": "Egypt", "ZA": "South Africa",
+    "MX": "Mexico", "AR": "Argentina", "CL": "Chile", "CO": "Colombia",
+    "PK": "Pakistan", "BD": "Bangladesh", "NG": "Nigeria", "KE": "Kenya",
+    "IQ": "Iraq",
+}

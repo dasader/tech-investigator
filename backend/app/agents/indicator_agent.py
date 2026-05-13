@@ -33,6 +33,8 @@ async def generate_indicators(category: str, description: str) -> list[dict]:
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
+                # Pinned low: indicator selection must be near-deterministic
+                # across reruns of the same category/description.
                 temperature=0.3,
             ),
         )
