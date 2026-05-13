@@ -105,3 +105,18 @@ async def test_search_all_sources_uses_semantic_scholar_by_default():
         results = await search_all_sources("HBM", max_results=5)
 
     assert results[0]["title"] == "HBM3E: High Bandwidth Memory"
+
+
+@pytest.mark.asyncio
+async def test_search_all_sources_uses_openalex_when_specified():
+    with patch("app.agents.search_agent.openalex_agent") as mock_openalex:
+        mock_openalex.search_papers_for_indicator = AsyncMock(return_value=[
+            {"title": "OpenAlex Paper", "abstract": "abstract", "doi": "10.x/y",
+             "year": 2024, "citation_count": 12, "paper_id": "OA1", "country": "South Korea",
+             "journal_name": "Nature"}
+        ])
+        from app.agents.search_agent import search_all_sources
+        results = await search_all_sources("HBM", source="openalex", max_results=5)
+
+    mock_openalex.search_papers_for_indicator.assert_called_once()
+    assert results[0]["title"] == "OpenAlex Paper"

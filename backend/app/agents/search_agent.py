@@ -1,7 +1,7 @@
 import asyncio
 import httpx
 from app.config import settings
-from app.agents import scopus_agent
+from app.agents import scopus_agent, openalex_agent
 
 SS_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds,venue"
@@ -69,4 +69,6 @@ async def search_all_sources(
 ) -> list[dict]:
     if source == "scopus":
         return await scopus_agent.search_papers_for_indicator(keywords, max_results, semaphore)
+    if source == "openalex":
+        return await openalex_agent.search_papers_for_indicator(keywords, max_results, semaphore)
     return await search_papers_for_indicator(keywords, max_results, semaphore)
