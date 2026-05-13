@@ -1,4 +1,6 @@
 import os
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -44,3 +46,29 @@ def client(db):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def httpx_mock_get(monkeypatch):
+    """Patch httpx.AsyncClient in the given agent module so client.get(...)
+    returns a mocked response. Returns the mock_client for call_args inspection.
+
+    Usage:
+        client = httpx_mock_get("app.agents.openalex_agent",
+                                json_body={"results": [...]})
+        # ...run code under test...
+        client.get.assert_called_once()
+    """
+    def _make(module_path: str, *, status_code: int = 200, json_body=None):
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+        mock_response.json.return_value = json_body if json_body is not None else {}
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+
+        mock_client_class = MagicMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        monkeypatch.setattr(f"{module_path}.httpx.AsyncClient", mock_client_class)
+        return mock_client
+    return _make

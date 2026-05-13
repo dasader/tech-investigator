@@ -1,9 +1,9 @@
 import pytest
-import httpx
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 from app.agents.scopus_agent import search_papers_for_indicator
 
 pytestmark = pytest.mark.no_db
+
 
 MOCK_SCOPUS_RESPONSE = {
     "search-results": {
@@ -44,17 +44,9 @@ MOCK_SCOPUS_NO_AFFILIATION = {
 
 
 @pytest.mark.asyncio
-async def test_search_returns_normalized_papers():
-    with patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = MOCK_SCOPUS_RESPONSE
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-
-        results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
+async def test_search_returns_normalized_papers(httpx_mock_get):
+    httpx_mock_get("app.agents.scopus_agent", json_body=MOCK_SCOPUS_RESPONSE)
+    results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
 
     assert isinstance(results, list)
     assert len(results) == 1
@@ -68,23 +60,14 @@ async def test_search_returns_normalized_papers():
 
 
 @pytest.mark.asyncio
-async def test_search_country_none_when_no_affiliation():
-    with patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = MOCK_SCOPUS_NO_AFFILIATION
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-
-        results = await search_papers_for_indicator("test keyword", max_results=5)
-
+async def test_search_country_none_when_no_affiliation(httpx_mock_get):
+    httpx_mock_get("app.agents.scopus_agent", json_body=MOCK_SCOPUS_NO_AFFILIATION)
+    results = await search_papers_for_indicator("test keyword", max_results=5)
     assert results[0]["country"] is None
 
 
 @pytest.mark.asyncio
-async def test_search_filters_entries_without_abstract():
+async def test_search_filters_entries_without_abstract(httpx_mock_get):
     no_abstract_response = {
         "search-results": {
             "entry": [
@@ -100,36 +83,22 @@ async def test_search_filters_entries_without_abstract():
             ]
         }
     }
-    with patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = no_abstract_response
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-
-        results = await search_papers_for_indicator("test", max_results=5)
-
+    httpx_mock_get("app.agents.scopus_agent", json_body=no_abstract_response)
+    results = await search_papers_for_indicator("test", max_results=5)
     assert results == []
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_429():
-    with patch("app.agents.scopus_agent.asyncio.sleep"), \
-         patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_client.get.return_value = mock_response
-
-        with pytest.raises(RuntimeError, match="Scopus API error 429"):
-            await search_papers_for_indicator("HBM bandwidth")
+async def test_search_raises_on_429(httpx_mock_get, monkeypatch):
+    monkeypatch.setattr("app.agents.scopus_agent.asyncio.sleep", AsyncMock())
+    httpx_mock_get("app.agents.scopus_agent", status_code=429)
+    with pytest.raises(RuntimeError, match="Scopus API error 429"):
+        await search_papers_for_indicator("HBM bandwidth")
 
 
 @pytest.mark.asyncio
-async def test_search_handles_single_affiliation_as_dict():
+async def test_search_handles_single_affiliation_as_dict(httpx_mock_get, monkeypatch):
+    monkeypatch.setattr("app.agents.scopus_agent.asyncio.sleep", AsyncMock())
     single_aff_response = {
         "search-results": {
             "entry": [
@@ -148,16 +117,6 @@ async def test_search_handles_single_affiliation_as_dict():
             ]
         }
     }
-    with patch("app.agents.scopus_agent.asyncio.sleep"), \
-         patch("app.agents.scopus_agent.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = single_aff_response
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-
-        results = await search_papers_for_indicator("test", max_results=5)
-
+    httpx_mock_get("app.agents.scopus_agent", json_body=single_aff_response)
+    results = await search_papers_for_indicator("test", max_results=5)
     assert results[0]["country"] == "Japan"
