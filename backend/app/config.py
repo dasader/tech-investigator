@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     gemini_model_fast: str = "gemini-2.5-flash"
     semantic_scholar_api_key: str = ""
     elsevier_api_key: str = ""
-    openalex_email: str = "ilhwan.lee@gmail.com"
+    openalex_email: str = ""
     job_timeout_minutes: int = 15
     max_papers_per_indicator: int = 30
     top_results_per_indicator: int = 5
