@@ -32,7 +32,8 @@ async def generate_indicators(category: str, description: str) -> list[dict]:
             model=settings.gemini_model_complex,
             contents=prompt,
             config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+                response_mime_type="application/json",
+                temperature=0.3,
             ),
         )
     )
