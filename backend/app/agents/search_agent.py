@@ -4,6 +4,70 @@ from app.config import settings
 from app.agents import scopus_agent, openalex_agent
 from app.agents._http_retry import get_with_retry
 
+def _norm(s: str | None) -> str:
+    return (s or "").strip().lower()
+
+
+def _dedup_key(paper: dict) -> str | None:
+    doi = _norm(paper.get("doi"))
+    if doi:
+        return f"doi:{doi}"
+    title = _norm(paper.get("title"))
+    if title:
+        return f"title:{title}"
+    return None
+
+
+def _merge_two(a: dict, b: dict) -> dict:
+    """a, b는 같은 논문. 필드별 best-of 병합."""
+    def longer(x: str | None, y: str | None) -> str:
+        x, y = x or "", y or ""
+        return x if len(x) >= len(y) else y
+
+    def first_truthy(*vals):
+        for v in vals:
+            if v:
+                return v
+        return None
+
+    merged = dict(a)
+    merged["abstract"] = longer(a.get("abstract"), b.get("abstract"))
+    merged["title"] = first_truthy(a.get("title"), b.get("title")) or ""
+    merged["year"] = first_truthy(a.get("year"), b.get("year"))
+    merged["journal_name"] = first_truthy(a.get("journal_name"), b.get("journal_name"))
+    merged["country"] = first_truthy(a.get("country"), b.get("country"))
+    merged["citation_count"] = max(
+        int(a.get("citation_count") or 0), int(b.get("citation_count") or 0)
+    )
+    merged["doi"] = first_truthy(a.get("doi"), b.get("doi"))
+    merged["paper_id"] = first_truthy(a.get("paper_id"), b.get("paper_id"))
+    # OpenAlex가 기여했으면 country_lookup_done=True → extraction_agent의 OpenAlex 재조회 스킵
+    if a.get("country_lookup_done") or b.get("country_lookup_done"):
+        merged["country_lookup_done"] = True
+    return merged
+
+
+def merge_papers(s2_papers: list[dict], openalex_papers: list[dict]) -> list[dict]:
+    """OpenAlex + S2 검색 결과를 DOI(없으면 title) 기준 필드별 best-of로 병합.
+
+    dedup 키가 없는(DOI·title 모두 없는) 논문은 그대로 유지한다.
+    결과는 citation_count 내림차순 정렬 — downstream 절단 시 인용수 높은 논문이 생존한다.
+    """
+    merged: dict[str, dict] = {}
+    no_key: list[dict] = []
+    for paper in [*s2_papers, *openalex_papers]:
+        key = _dedup_key(paper)
+        if key is None:
+            no_key.append(paper)
+        elif key in merged:
+            merged[key] = _merge_two(merged[key], paper)
+        else:
+            merged[key] = paper
+    all_papers = [*merged.values(), *no_key]
+    all_papers.sort(key=lambda p: int(p.get("citation_count") or 0), reverse=True)
+    return all_papers
+
+
 SS_API_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 SS_FIELDS = "paperId,title,abstract,year,citationCount,externalIds,venue"
 
