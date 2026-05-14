@@ -6,7 +6,7 @@ OpenAlex 통합 (`feat/openalex-search`) 진행 중 `/simplify` 리뷰에서 발
 
 ## A. Skipped from `/simplify` (별도 PR 권장)
 
-> **Status (2026-05-14):** A1, A2, A4 완료 — A2는 `chore/a2-shared-httpx-client` 브랜치. A3은 미해결.
+> **Status (2026-05-14):** A1-A4 전부 완료. A3은 `chore/a3-per-source-concurrency` 브랜치. 본 문서의 모든 항목(A1-A4 + B1) 처리 완료.
 
 ### A1. 3-way HTTP retry 루프 공통화
 
