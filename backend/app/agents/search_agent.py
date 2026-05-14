@@ -147,7 +147,7 @@ async def search_combined(
         raise RuntimeError(
             f"combined search failed for {keywords!r}: "
             f"S2={s2_result}, OpenAlex={oa_result}"
-        )
+        ) from s2_result
     if s2_failed:
         logger.warning(
             "combined search: S2 failed for %r (%s), using OpenAlex only",
