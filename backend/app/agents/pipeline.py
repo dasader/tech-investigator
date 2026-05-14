@@ -25,6 +25,15 @@ class PipelineState(TypedDict):
     report_markdown: str
     error: str
 
+# source별 검색 동시성. 각 외부 API의 rate limit보다 보수적으로 잡은
+# 운영 목표값이며, 정확한 계약상 한도가 아니다 (한도는 변동될 수 있음).
+CONCURRENCY = {"semantic_scholar": 1, "scopus": 5, "openalex": 10}
+
+
+def _concurrency_for(source: str) -> int:
+    return CONCURRENCY.get(source, 1)
+
+
 def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str):
     job = db.query(Job).filter(Job.id == job_id).first()
     if job:
@@ -34,7 +43,7 @@ def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str
 
 async def search_node(state: PipelineState, db: Session, client: httpx.AsyncClient) -> PipelineState:
     _update_job(db, state["job_id"], 10.0, "논문 검색 중")
-    semaphore = asyncio.Semaphore(1)
+    semaphore = asyncio.Semaphore(_concurrency_for(state["search_source"]))
     results = {}
     tasks = [
         search_all_sources(
