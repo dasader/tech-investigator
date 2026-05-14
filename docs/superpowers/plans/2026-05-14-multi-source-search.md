@@ -441,6 +441,10 @@ git commit -m "feat(utils): combined engine label for multi-source search"
 - Modify: `backend/app/schemas/tech_query.py:10`
 - Modify: `backend/app/agents/search_agent.py:57-69` (`search_all_sources`)
 - Modify: `backend/app/agents/pipeline.py:28-60` (`CONCURRENCY`/`_concurrency_for`/`search_node`)
+- Modify: `backend/app/agents/pipeline.py` (`run_pipeline`의 `search_source` 폴백)
+- Modify: `backend/app/utils.py` (`get_search_source` 폴백)
+- Modify: `backend/app/routers/results.py` (`search_source` 폴백)
+- Modify: `backend/app/agents/synthesis_agent.py` (`build_report_markdown`의 기본 인자)
 - Test: `backend/tests/test_pipeline.py` (전체 재작성)
 - Test: `backend/tests/test_search_agent.py:65-107` (`search_all_sources` 테스트 3개 교체)
 
@@ -630,15 +634,55 @@ async def search_node(state: PipelineState, db: Session, client: httpx.AsyncClie
     return {**state, "search_results": results}
 ```
 
-- [ ] **Step 8: 테스트 통과 확인**
+- [ ] **Step 8: 잔존 `"semantic_scholar"` 폴백/기본값 정리**
 
-Run: `docker compose exec api pytest tests/test_pipeline.py tests/test_search_agent.py tests/test_combined_search.py -v`
-Expected: PASS — `test_pipeline.py` 3 passed, `test_search_agent.py` 7 passed (기존 S2 테스트 4개 + 신규 3개), `test_combined_search.py` 9 passed
+스키마 Literal이 `combined`/`scopus`로 바뀌면서 코드 곳곳의 `"semantic_scholar"` 폴백이 무효 값이 된다. 특히 `pipeline.py`의 `run_pipeline` 폴백은 `SOURCE_PLAN["semantic_scholar"]` → `KeyError`를 유발하므로 반드시 고친다. 4곳 모두 `"semantic_scholar"` → `"combined"`로 교체:
 
-- [ ] **Step 9: 커밋**
+`backend/app/agents/pipeline.py` — `run_pipeline` 내부:
+```python
+        "search_source": query.search_source or "semantic_scholar",
+```
+→
+```python
+        "search_source": query.search_source or "combined",
+```
+
+`backend/app/utils.py` — `get_search_source` 마지막 줄:
+```python
+    return (query_obj.search_source if query_obj else None) or "semantic_scholar"
+```
+→
+```python
+    return (query_obj.search_source if query_obj else None) or "combined"
+```
+
+`backend/app/routers/results.py` — `get_results` 내부:
+```python
+    search_source = (tech_query.search_source if tech_query else None) or "semantic_scholar"
+```
+→
+```python
+    search_source = (tech_query.search_source if tech_query else None) or "combined"
+```
+
+`backend/app/agents/synthesis_agent.py` — `build_report_markdown` 시그니처:
+```python
+    search_source: str = "semantic_scholar",
+```
+→
+```python
+    search_source: str = "combined",
+```
+
+- [ ] **Step 9: 테스트 통과 확인**
+
+Run: `docker compose exec api pytest tests/test_pipeline.py tests/test_search_agent.py tests/test_combined_search.py tests/test_utils.py -v`
+Expected: PASS — `test_pipeline.py` 3 passed, `test_search_agent.py` 7 passed (기존 S2 테스트 4개 + 신규 3개), `test_combined_search.py` 9 passed, `test_utils.py` 3 passed
+
+- [ ] **Step 10: 커밋**
 
 ```bash
-git add backend/app/schemas/tech_query.py backend/app/agents/search_agent.py backend/app/agents/pipeline.py backend/tests/test_pipeline.py backend/tests/test_search_agent.py
+git add backend/app/schemas/tech_query.py backend/app/agents/search_agent.py backend/app/agents/pipeline.py backend/app/utils.py backend/app/routers/results.py backend/app/agents/synthesis_agent.py backend/tests/test_pipeline.py backend/tests/test_search_agent.py
 git commit -m "feat(search): switch search_source to combined/scopus model"
 ```
 
