@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import AsyncMock
 from app.agents.openalex_agent import _reconstruct_abstract, search_papers_for_indicator
 
 pytestmark = pytest.mark.no_db
@@ -94,8 +93,7 @@ async def test_search_filters_entries_without_abstract(mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_429(monkeypatch, mock_httpx_client):
-    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+async def test_search_raises_on_429(mock_httpx_client):
     client = mock_httpx_client(status_code=429)
     with pytest.raises(RuntimeError, match="OpenAlex API error 429"):
         await search_papers_for_indicator("HBM bandwidth", client=client)

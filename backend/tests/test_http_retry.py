@@ -21,9 +21,8 @@ async def test_get_with_retry_returns_json_on_200(mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_get_with_retry_raises_on_max_attempts_429(monkeypatch, mock_httpx_client):
+async def test_get_with_retry_raises_on_max_attempts_429(mock_httpx_client):
     client = mock_httpx_client(status_code=429)
-    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
 
     with pytest.raises(RuntimeError, match="TestSvc API error 429"):
         await get_with_retry(
@@ -35,7 +34,7 @@ async def test_get_with_retry_raises_on_max_attempts_429(monkeypatch, mock_httpx
 
 
 @pytest.mark.asyncio
-async def test_get_with_retry_wraps_http_status_error(mock_httpx_client):
+async def test_get_with_retry_wraps_http_status_error():
     response = MagicMock()
     response.status_code = 500
     err = httpx.HTTPStatusError("boom", request=MagicMock(), response=response)
@@ -66,7 +65,7 @@ async def test_get_with_retry_wraps_timeout(mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_get_with_retry_succeeds_after_429(monkeypatch, mock_httpx_client):
+async def test_get_with_retry_succeeds_after_429(mock_httpx_client):
     r429 = MagicMock()
     r429.status_code = 429
     r200 = MagicMock()
@@ -74,7 +73,6 @@ async def test_get_with_retry_succeeds_after_429(monkeypatch, mock_httpx_client)
     r200.json.return_value = {"ok": True}
     r200.raise_for_status = MagicMock()
     client = mock_httpx_client(get_side_effect=[r429, r200])
-    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
 
     result = await get_with_retry(
         "http://example.test/api",

@@ -70,3 +70,9 @@ def mock_httpx_client():
             client.get.return_value = response
         return client
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _silence_http_retry_sleep(monkeypatch):
+    """_http_retry의 rate-limit/backoff sleep을 테스트에서 no-op으로 — 실제 대기 없이 실행."""
+    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())

@@ -1,6 +1,6 @@
 import pytest
 import httpx
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from app.agents.search_agent import search_papers_for_indicator, search_all_sources
 
 pytestmark = pytest.mark.no_db
@@ -44,8 +44,7 @@ async def test_search_filters_empty_abstracts(mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_http_error(monkeypatch, mock_httpx_client):
-    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+async def test_search_raises_on_http_error(mock_httpx_client):
     err = httpx.HTTPStatusError(
         "429 Too Many Requests",
         request=MagicMock(),
@@ -57,8 +56,7 @@ async def test_search_raises_on_http_error(monkeypatch, mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_timeout(monkeypatch, mock_httpx_client):
-    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+async def test_search_raises_on_timeout(mock_httpx_client):
     client = mock_httpx_client(get_side_effect=httpx.TimeoutException("timeout"))
     with pytest.raises(RuntimeError, match="timeout"):
         await search_papers_for_indicator("HBM bandwidth", client=client)
