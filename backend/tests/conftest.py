@@ -48,27 +48,25 @@ def client(db):
     app.dependency_overrides.clear()
 
 
+import httpx  # noqa: E402  (httpx imported here only for AsyncMock spec)
+
+
 @pytest.fixture
-def httpx_mock_get(monkeypatch):
-    """Patch httpx.AsyncClient in the given agent module so client.get(...)
-    returns a mocked response. Returns the mock_client for call_args inspection.
+def mock_httpx_client():
+    """Build a mock httpx.AsyncClient-shaped object for DI into agent functions.
 
-    Usage:
-        client = httpx_mock_get("app.agents.openalex_agent",
-                                json_body={"results": [...]})
-        # ...run code under test...
-        client.get.assert_called_once()
+    Either supply json_body/status_code for a single mocked response,
+    or get_side_effect for sequential / exception scenarios.
     """
-    def _make(module_path: str, *, status_code: int = 200, json_body=None):
-        mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = status_code
-        mock_response.json.return_value = json_body if json_body is not None else {}
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-
-        mock_client_class = MagicMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        monkeypatch.setattr(f"{module_path}.httpx.AsyncClient", mock_client_class)
-        return mock_client
+    def _make(*, status_code: int = 200, json_body=None, get_side_effect=None) -> AsyncMock:
+        client = AsyncMock(spec=httpx.AsyncClient)
+        if get_side_effect is not None:
+            client.get.side_effect = get_side_effect
+        else:
+            response = MagicMock()
+            response.status_code = status_code
+            response.json.return_value = json_body if json_body is not None else {}
+            response.raise_for_status = MagicMock()
+            client.get.return_value = response
+        return client
     return _make

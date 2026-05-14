@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 from app.config import settings
 from app.agents import scopus_agent, openalex_agent
 from app.agents._http_retry import get_with_retry
@@ -11,6 +12,8 @@ async def search_papers_for_indicator(
     keywords: str,
     max_results: int | None = None,
     semaphore: asyncio.Semaphore | None = None,
+    *,
+    client: httpx.AsyncClient,
 ) -> list[dict]:
     max_results = max_results if max_results is not None else settings.max_papers_per_indicator
     headers = {}
@@ -25,6 +28,7 @@ async def search_papers_for_indicator(
     async with sem:
         payload = await get_with_retry(
             SS_API_URL,
+            client=client,
             params=params,
             headers=headers,
             service_name="Semantic Scholar",
@@ -55,9 +59,11 @@ async def search_all_sources(
     source: str = "semantic_scholar",
     max_results: int | None = None,
     semaphore: asyncio.Semaphore | None = None,
+    *,
+    client: httpx.AsyncClient,
 ) -> list[dict]:
     if source == "scopus":
-        return await scopus_agent.search_papers_for_indicator(keywords, max_results, semaphore)
+        return await scopus_agent.search_papers_for_indicator(keywords, max_results, semaphore, client=client)
     if source == "openalex":
-        return await openalex_agent.search_papers_for_indicator(keywords, max_results, semaphore)
-    return await search_papers_for_indicator(keywords, max_results, semaphore)
+        return await openalex_agent.search_papers_for_indicator(keywords, max_results, semaphore, client=client)
+    return await search_papers_for_indicator(keywords, max_results, semaphore, client=client)

@@ -57,9 +57,9 @@ MOCK_OPENALEX_RESPONSE = {
 
 
 @pytest.mark.asyncio
-async def test_search_returns_normalized_papers(httpx_mock_get):
-    httpx_mock_get("app.agents._http_retry", json_body=MOCK_OPENALEX_RESPONSE)
-    results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
+async def test_search_returns_normalized_papers(mock_httpx_client):
+    client = mock_httpx_client(json_body=MOCK_OPENALEX_RESPONSE)
+    results = await search_papers_for_indicator("HBM bandwidth", max_results=5, client=client)
 
     assert len(results) == 1
     p = results[0]
@@ -73,7 +73,7 @@ async def test_search_returns_normalized_papers(httpx_mock_get):
 
 
 @pytest.mark.asyncio
-async def test_search_filters_entries_without_abstract(httpx_mock_get):
+async def test_search_filters_entries_without_abstract(mock_httpx_client):
     no_abs = {
         "results": [
             {
@@ -88,21 +88,21 @@ async def test_search_filters_entries_without_abstract(httpx_mock_get):
             }
         ]
     }
-    httpx_mock_get("app.agents._http_retry", json_body=no_abs)
-    results = await search_papers_for_indicator("test", max_results=5)
+    client = mock_httpx_client(json_body=no_abs)
+    results = await search_papers_for_indicator("test", max_results=5, client=client)
     assert results == []
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_429(httpx_mock_get, monkeypatch):
+async def test_search_raises_on_429(monkeypatch, mock_httpx_client):
     monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
-    httpx_mock_get("app.agents._http_retry", status_code=429)
+    client = mock_httpx_client(status_code=429)
     with pytest.raises(RuntimeError, match="OpenAlex API error 429"):
-        await search_papers_for_indicator("HBM bandwidth")
+        await search_papers_for_indicator("HBM bandwidth", client=client)
 
 
 @pytest.mark.asyncio
-async def test_search_country_none_when_no_institutions(httpx_mock_get):
+async def test_search_country_none_when_no_institutions(mock_httpx_client):
     no_inst = {
         "results": [
             {
@@ -117,16 +117,16 @@ async def test_search_country_none_when_no_institutions(httpx_mock_get):
             }
         ]
     }
-    httpx_mock_get("app.agents._http_retry", json_body=no_inst)
-    results = await search_papers_for_indicator("test", max_results=5)
+    client = mock_httpx_client(json_body=no_inst)
+    results = await search_papers_for_indicator("test", max_results=5, client=client)
     assert results[0]["country"] is None
     assert results[0]["journal_name"] is None
 
 
 @pytest.mark.asyncio
-async def test_search_uses_cited_by_count_sort(httpx_mock_get):
-    mock_client = httpx_mock_get("app.agents._http_retry", json_body={"results": []})
-    await search_papers_for_indicator("test", max_results=5)
+async def test_search_uses_cited_by_count_sort(mock_httpx_client):
+    client = mock_httpx_client(json_body={"results": []})
+    await search_papers_for_indicator("test", max_results=5, client=client)
 
-    _, kwargs = mock_client.get.call_args
+    _, kwargs = client.get.call_args
     assert kwargs.get("params", {}).get("sort") == "cited_by_count:desc"

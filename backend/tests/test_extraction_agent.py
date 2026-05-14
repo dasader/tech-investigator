@@ -1,5 +1,6 @@
 import json
 import pytest
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.extraction_agent import extract_metrics_from_paper
@@ -32,6 +33,10 @@ def _gemini_response(payload: list[dict]) -> MagicMock:
     return response
 
 
+def _client() -> AsyncMock:
+    return AsyncMock(spec=httpx.AsyncClient)
+
+
 @pytest.mark.asyncio
 async def test_extracts_value_from_paper():
     gemini_payload = [{
@@ -45,7 +50,7 @@ async def test_extracts_value_from_paper():
          patch("app.agents.extraction_agent._get_country_from_openalex",
                new=AsyncMock(return_value="South Korea")):
         mock_client.models.generate_content.return_value = _gemini_response(gemini_payload)
-        results = await extract_metrics_from_paper(PAPER_WITH_VALUE, [INDICATOR_BANDWIDTH])
+        results = await extract_metrics_from_paper(PAPER_WITH_VALUE, [INDICATOR_BANDWIDTH], client=_client())
 
     assert len(results) == 1
     ind_id, payload = results[0]
@@ -62,7 +67,7 @@ async def test_returns_empty_when_no_value_found():
          patch("app.agents.extraction_agent._get_country_from_openalex",
                new=AsyncMock(return_value=None)):
         mock_client.models.generate_content.return_value = _gemini_response([])
-        results = await extract_metrics_from_paper(PAPER_WITHOUT_VALUE, [INDICATOR_BANDWIDTH])
+        results = await extract_metrics_from_paper(PAPER_WITHOUT_VALUE, [INDICATOR_BANDWIDTH], client=_client())
 
     mock_client.models.generate_content.assert_called_once()
     assert results == []
@@ -85,7 +90,7 @@ async def test_skips_openalex_when_country_already_set():
          patch("app.agents.extraction_agent._get_country_from_openalex",
                new=AsyncMock()) as mock_openalex:
         mock_client.models.generate_content.return_value = _gemini_response(gemini_payload)
-        results = await extract_metrics_from_paper(paper_with_country, [INDICATOR_BANDWIDTH])
+        results = await extract_metrics_from_paper(paper_with_country, [INDICATOR_BANDWIDTH], client=_client())
 
     mock_openalex.assert_not_called()
     _, payload = results[0]
@@ -110,7 +115,7 @@ async def test_skips_openalex_when_country_lookup_done():
          patch("app.agents.extraction_agent._get_country_from_openalex",
                new=AsyncMock()) as mock_openalex:
         mock_client.models.generate_content.return_value = _gemini_response(gemini_payload)
-        results = await extract_metrics_from_paper(paper_lookup_done, [INDICATOR_BANDWIDTH])
+        results = await extract_metrics_from_paper(paper_lookup_done, [INDICATOR_BANDWIDTH], client=_client())
 
     mock_openalex.assert_not_called()
     _, payload = results[0]

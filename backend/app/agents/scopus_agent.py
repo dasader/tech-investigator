@@ -58,28 +58,28 @@ def _resolve_country(affiliations: list) -> str | None:
     return _SCOPUS_COUNTRY_MAP.get(raw, raw)
 
 
-async def _batch_fetch_abstracts(doi_list: list[str]) -> dict[str, str]:
+async def _batch_fetch_abstracts(doi_list: list[str], *, client: httpx.AsyncClient) -> dict[str, str]:
     """Semantic Scholar batch API로 DOI → abstract 매핑 반환."""
     if not doi_list:
         return {}
     ids = [f"DOI:{doi}" for doi in doi_list]
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(
-                S2_BATCH_URL,
-                params={"fields": "abstract"},
-                json={"ids": ids},
-            )
-            if r.status_code != 200:
-                return {}
-            items = r.json()
-            if len(items) != len(doi_list):
-                logger.warning("S2 batch length mismatch: expected %d, got %d", len(doi_list), len(items))
-            result: dict[str, str] = {}
-            for doi, item in zip(doi_list, items):
-                if item and item.get("abstract"):
-                    result[doi] = item["abstract"]
-            return result
+        r = await client.post(
+            S2_BATCH_URL,
+            params={"fields": "abstract"},
+            json={"ids": ids},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            return {}
+        items = r.json()
+        if len(items) != len(doi_list):
+            logger.warning("S2 batch length mismatch: expected %d, got %d", len(doi_list), len(items))
+        result: dict[str, str] = {}
+        for doi, item in zip(doi_list, items):
+            if item and item.get("abstract"):
+                result[doi] = item["abstract"]
+        return result
     except Exception as e:
         logger.warning("S2 batch abstract fetch failed: %s", e)
         return {}
@@ -89,6 +89,8 @@ async def search_papers_for_indicator(
     keywords: str,
     max_results: int | None = None,
     semaphore: asyncio.Semaphore | None = None,
+    *,
+    client: httpx.AsyncClient,
 ) -> list[dict]:
     max_results = max_results if max_results is not None else settings.max_papers_per_indicator
     headers = {
@@ -107,6 +109,7 @@ async def search_papers_for_indicator(
     async with sem:
         payload = await get_with_retry(
             SCOPUS_API_URL,
+            client=client,
             params=params,
             headers=headers,
             service_name="Scopus",
@@ -141,7 +144,7 @@ async def search_papers_for_indicator(
     # Scopus free tier는 abstract를 반환하지 않으므로 S2 batch API로 보완
     doi_missing = [p["doi"] for p in papers if not p["abstract"] and p.get("doi")]
     if doi_missing:
-        abstracts = await _batch_fetch_abstracts(doi_missing)
+        abstracts = await _batch_fetch_abstracts(doi_missing, client=client)
         for p in papers:
             if p.get("doi") and p["doi"] in abstracts:
                 p["abstract"] = abstracts[p["doi"]]

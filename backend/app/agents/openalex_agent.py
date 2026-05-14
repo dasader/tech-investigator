@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import httpx
 from app.config import settings
 from app.agents.country_codes import COUNTRY_CODES
 from app.agents._http_retry import get_with_retry
@@ -54,6 +55,8 @@ async def search_papers_for_indicator(
     keywords: str,
     max_results: int | None = None,
     semaphore: asyncio.Semaphore | None = None,
+    *,
+    client: httpx.AsyncClient,
 ) -> list[dict]:
     max_results = max_results if max_results is not None else settings.max_papers_per_indicator
     params: dict = {
@@ -70,6 +73,7 @@ async def search_papers_for_indicator(
     async with sem:
         data = await get_with_retry(
             OPENALEX_API_URL,
+            client=client,
             params=params,
             service_name="OpenAlex",
             context=keywords,

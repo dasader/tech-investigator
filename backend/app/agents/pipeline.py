@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from sqlalchemy.orm import Session
@@ -31,7 +32,7 @@ def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str
         job.current_step = current_step
         db.commit()
 
-async def search_node(state: PipelineState, db: Session) -> PipelineState:
+async def search_node(state: PipelineState, db: Session, client: httpx.AsyncClient) -> PipelineState:
     _update_job(db, state["job_id"], 10.0, "논문 검색 중")
     semaphore = asyncio.Semaphore(1)
     results = {}
@@ -40,6 +41,7 @@ async def search_node(state: PipelineState, db: Session) -> PipelineState:
             ind["search_keywords"] or ind["name"],
             source=state["search_source"],
             semaphore=semaphore,
+            client=client,
         )
         for ind in state["indicators"]
     ]
@@ -48,7 +50,7 @@ async def search_node(state: PipelineState, db: Session) -> PipelineState:
         results[ind["id"]] = papers
     return {**state, "search_results": results}
 
-async def extract_node(state: PipelineState, db: Session) -> PipelineState:
+async def extract_node(state: PipelineState, db: Session, client: httpx.AsyncClient) -> PipelineState:
     _update_job(db, state["job_id"], 40.0, "수치 추출 중")
 
     semaphore = asyncio.Semaphore(10)
@@ -66,7 +68,7 @@ async def extract_node(state: PipelineState, db: Session) -> PipelineState:
             paper_groups[key]["indicators"].append(ind)
 
     tasks = [
-        extract_metrics_from_paper(group["paper"], group["indicators"], semaphore)
+        extract_metrics_from_paper(group["paper"], group["indicators"], semaphore, client=client)
         for group in paper_groups.values()
     ]
     batch_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -151,8 +153,9 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "error": "",
     }
 
-    state = await search_node(state, db)
-    state = await extract_node(state, db)
-    state = await validate_node(state, db)
-    state = await synthesize_node(state, db)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+        state = await search_node(state, db, client)
+        state = await extract_node(state, db, client)
+        state = await validate_node(state, db)
+        state = await synthesize_node(state, db)
     return state["report_markdown"]

@@ -1,7 +1,9 @@
 import pytest
 import httpx
-from unittest.mock import AsyncMock, patch, MagicMock
-from app.agents.search_agent import search_papers_for_indicator
+from unittest.mock import AsyncMock, MagicMock
+from app.agents.search_agent import search_papers_for_indicator, search_all_sources
+
+pytestmark = pytest.mark.no_db
 
 MOCK_SS_RESPONSE = {
     "data": [
@@ -18,16 +20,10 @@ MOCK_SS_RESPONSE = {
 
 
 @pytest.mark.asyncio
-async def test_search_returns_list_of_papers():
-    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = MOCK_SS_RESPONSE
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-        results = await search_papers_for_indicator("HBM bandwidth GB/s", max_results=5)
+async def test_search_returns_list_of_papers(mock_httpx_client):
+    client = mock_httpx_client(json_body=MOCK_SS_RESPONSE)
+    results = await search_papers_for_indicator("HBM bandwidth GB/s", max_results=5, client=client)
+
     assert isinstance(results, list)
     assert len(results) >= 1
     assert "title" in results[0]
@@ -35,88 +31,78 @@ async def test_search_returns_list_of_papers():
 
 
 @pytest.mark.asyncio
-async def test_search_filters_empty_abstracts():
-    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": [
-                {"paperId": "x1", "title": "Paper 1", "abstract": None, "year": 2023, "citationCount": 10, "externalIds": {}},
-                {"paperId": "x2", "title": "Paper 2", "abstract": "actual content with values", "year": 2023, "citationCount": 10, "externalIds": {}},
-            ]
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-        results = await search_papers_for_indicator("test keyword", max_results=5)
+async def test_search_filters_empty_abstracts(mock_httpx_client):
+    payload = {
+        "data": [
+            {"paperId": "x1", "title": "Paper 1", "abstract": None, "year": 2023, "citationCount": 10, "externalIds": {}},
+            {"paperId": "x2", "title": "Paper 2", "abstract": "actual content with values", "year": 2023, "citationCount": 10, "externalIds": {}},
+        ]
+    }
+    client = mock_httpx_client(json_body=payload)
+    results = await search_papers_for_indicator("test keyword", max_results=5, client=client)
     assert all(r["abstract"] for r in results)
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_http_error():
-    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_client.get.side_effect = httpx.HTTPStatusError(
-            "429 Too Many Requests",
-            request=MagicMock(),
-            response=MagicMock(status_code=429),
-        )
-        with pytest.raises(RuntimeError, match="Semantic Scholar API error 429"):
-            await search_papers_for_indicator("HBM bandwidth")
+async def test_search_raises_on_http_error(monkeypatch, mock_httpx_client):
+    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+    err = httpx.HTTPStatusError(
+        "429 Too Many Requests",
+        request=MagicMock(),
+        response=MagicMock(status_code=429),
+    )
+    client = mock_httpx_client(get_side_effect=err)
+    with pytest.raises(RuntimeError, match="Semantic Scholar"):
+        await search_papers_for_indicator("HBM bandwidth", client=client)
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_timeout():
-    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_client.get.side_effect = httpx.TimeoutException("timeout")
-        with pytest.raises(RuntimeError, match="timeout"):
-            await search_papers_for_indicator("HBM bandwidth")
+async def test_search_raises_on_timeout(monkeypatch, mock_httpx_client):
+    monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
+    client = mock_httpx_client(get_side_effect=httpx.TimeoutException("timeout"))
+    with pytest.raises(RuntimeError, match="timeout"):
+        await search_papers_for_indicator("HBM bandwidth", client=client)
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_scopus_when_specified():
-    with patch("app.agents.search_agent.scopus_agent") as mock_scopus:
-        mock_scopus.search_papers_for_indicator = AsyncMock(return_value=[
-            {"title": "Scopus Paper", "abstract": "abstract", "doi": None,
-             "year": 2024, "citation_count": 10, "paper_id": "S1", "country": "USA"}
-        ])
-        from app.agents.search_agent import search_all_sources
-        results = await search_all_sources("HBM", source="scopus", max_results=5)
+async def test_search_all_sources_uses_scopus_when_specified(mock_httpx_client, monkeypatch):
+    captured = {}
+    async def fake_scopus(*args, **kwargs):
+        captured["called"] = True
+        captured["client"] = kwargs.get("client")
+        return [{"title": "Scopus Paper", "abstract": "abstract", "doi": None,
+                 "year": 2024, "citation_count": 10, "paper_id": "S1", "country": "USA"}]
+    from app.agents import search_agent
+    monkeypatch.setattr(search_agent.scopus_agent, "search_papers_for_indicator", fake_scopus)
+    client = mock_httpx_client()
+    results = await search_all_sources("HBM", source="scopus", max_results=5, client=client)
 
-    mock_scopus.search_papers_for_indicator.assert_called_once()
+    assert captured["called"] is True
+    assert captured["client"] is client
     assert results[0]["title"] == "Scopus Paper"
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_semantic_scholar_by_default():
-    with patch("app.agents._http_retry.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = MOCK_SS_RESPONSE
-        mock_response.raise_for_status = MagicMock()
-        mock_client.get.return_value = mock_response
-        from app.agents.search_agent import search_all_sources
-        results = await search_all_sources("HBM", max_results=5)
-
+async def test_search_all_sources_uses_semantic_scholar_by_default(mock_httpx_client):
+    client = mock_httpx_client(json_body=MOCK_SS_RESPONSE)
+    results = await search_all_sources("HBM", max_results=5, client=client)
     assert results[0]["title"] == "HBM3E: High Bandwidth Memory"
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_openalex_when_specified():
-    with patch("app.agents.search_agent.openalex_agent") as mock_openalex:
-        mock_openalex.search_papers_for_indicator = AsyncMock(return_value=[
-            {"title": "OpenAlex Paper", "abstract": "abstract", "doi": "10.x/y",
-             "year": 2024, "citation_count": 12, "paper_id": "OA1", "country": "South Korea",
-             "journal_name": "Nature"}
-        ])
-        from app.agents.search_agent import search_all_sources
-        results = await search_all_sources("HBM", source="openalex", max_results=5)
+async def test_search_all_sources_uses_openalex_when_specified(mock_httpx_client, monkeypatch):
+    captured = {}
+    async def fake_openalex(*args, **kwargs):
+        captured["called"] = True
+        captured["client"] = kwargs.get("client")
+        return [{"title": "OpenAlex Paper", "abstract": "abstract", "doi": "10.x/y",
+                 "year": 2024, "citation_count": 12, "paper_id": "OA1", "country": "South Korea",
+                 "journal_name": "Nature"}]
+    from app.agents import search_agent
+    monkeypatch.setattr(search_agent.openalex_agent, "search_papers_for_indicator", fake_openalex)
+    client = mock_httpx_client()
+    results = await search_all_sources("HBM", source="openalex", max_results=5, client=client)
 
-    mock_openalex.search_papers_for_indicator.assert_called_once()
+    assert captured["called"] is True
+    assert captured["client"] is client
     assert results[0]["title"] == "OpenAlex Paper"

@@ -44,9 +44,9 @@ MOCK_SCOPUS_NO_AFFILIATION = {
 
 
 @pytest.mark.asyncio
-async def test_search_returns_normalized_papers(httpx_mock_get):
-    httpx_mock_get("app.agents._http_retry", json_body=MOCK_SCOPUS_RESPONSE)
-    results = await search_papers_for_indicator("HBM bandwidth", max_results=5)
+async def test_search_returns_normalized_papers(mock_httpx_client):
+    client = mock_httpx_client(json_body=MOCK_SCOPUS_RESPONSE)
+    results = await search_papers_for_indicator("HBM bandwidth", max_results=5, client=client)
 
     assert isinstance(results, list)
     assert len(results) == 1
@@ -60,14 +60,14 @@ async def test_search_returns_normalized_papers(httpx_mock_get):
 
 
 @pytest.mark.asyncio
-async def test_search_country_none_when_no_affiliation(httpx_mock_get):
-    httpx_mock_get("app.agents._http_retry", json_body=MOCK_SCOPUS_NO_AFFILIATION)
-    results = await search_papers_for_indicator("test keyword", max_results=5)
+async def test_search_country_none_when_no_affiliation(mock_httpx_client):
+    client = mock_httpx_client(json_body=MOCK_SCOPUS_NO_AFFILIATION)
+    results = await search_papers_for_indicator("test keyword", max_results=5, client=client)
     assert results[0]["country"] is None
 
 
 @pytest.mark.asyncio
-async def test_search_filters_entries_without_abstract(httpx_mock_get):
+async def test_search_filters_entries_without_abstract(mock_httpx_client):
     no_abstract_response = {
         "search-results": {
             "entry": [
@@ -83,21 +83,21 @@ async def test_search_filters_entries_without_abstract(httpx_mock_get):
             ]
         }
     }
-    httpx_mock_get("app.agents._http_retry", json_body=no_abstract_response)
-    results = await search_papers_for_indicator("test", max_results=5)
+    client = mock_httpx_client(json_body=no_abstract_response)
+    results = await search_papers_for_indicator("test", max_results=5, client=client)
     assert results == []
 
 
 @pytest.mark.asyncio
-async def test_search_raises_on_429(httpx_mock_get, monkeypatch):
+async def test_search_raises_on_429(monkeypatch, mock_httpx_client):
     monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
-    httpx_mock_get("app.agents._http_retry", status_code=429)
+    client = mock_httpx_client(status_code=429)
     with pytest.raises(RuntimeError, match="Scopus API error 429"):
-        await search_papers_for_indicator("HBM bandwidth")
+        await search_papers_for_indicator("HBM bandwidth", client=client)
 
 
 @pytest.mark.asyncio
-async def test_search_handles_single_affiliation_as_dict(httpx_mock_get, monkeypatch):
+async def test_search_handles_single_affiliation_as_dict(monkeypatch, mock_httpx_client):
     monkeypatch.setattr("app.agents._http_retry.asyncio.sleep", AsyncMock())
     single_aff_response = {
         "search-results": {
@@ -117,6 +117,6 @@ async def test_search_handles_single_affiliation_as_dict(httpx_mock_get, monkeyp
             ]
         }
     }
-    httpx_mock_get("app.agents._http_retry", json_body=single_aff_response)
-    results = await search_papers_for_indicator("test", max_results=5)
+    client = mock_httpx_client(json_body=single_aff_response)
+    results = await search_papers_for_indicator("test", max_results=5, client=client)
     assert results[0]["country"] == "Japan"

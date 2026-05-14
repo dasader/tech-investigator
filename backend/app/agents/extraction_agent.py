@@ -32,15 +32,14 @@ BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치�
 ]
 지표 {n}개 모두 포함하여 정확히 {n}개 항목을 반환하세요."""
 
-async def _get_country_from_openalex(doi: str) -> str | None:
+async def _get_country_from_openalex(doi: str, *, client: httpx.AsyncClient) -> str | None:
     try:
         url = f"https://api.openalex.org/works/doi:{doi}"
         headers = {"User-Agent": "TechSpec/1.0 (mailto:ilhwan.lee@gmail.com)"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(url, headers=headers)
-            if r.status_code != 200:
-                return None
-            data = r.json()
+        r = await client.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
         authorships = data.get("authorships") or []
         if not authorships:
             return None
@@ -59,6 +58,8 @@ async def extract_metrics_from_paper(
     paper: dict,
     indicators: list[dict],
     semaphore: asyncio.Semaphore | None = None,
+    *,
+    client: httpx.AsyncClient,
 ) -> list[tuple[int, dict]]:
     """논문 1개에서 여러 지표를 한 번의 Gemini 호출로 추출.
 
@@ -89,7 +90,7 @@ async def extract_metrics_from_paper(
                 return paper["country"]
             if paper.get("country_lookup_done"):
                 return None
-            return await _get_country_from_openalex(doi) if doi else None
+            return await _get_country_from_openalex(doi, client=client) if doi else None
 
         response, country = await asyncio.gather(
             run_sync_with_retry(lambda: genai_client.models.generate_content(
