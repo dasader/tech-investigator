@@ -128,6 +128,10 @@ async def synthesize_node(state: PipelineState, db: Session) -> PipelineState:
         ind["name"]: state["validated_values"].get(ind["id"], [])
         for ind in state["indicators"]
     }
+    # 검증 통과 데이터가 한 건도 없으면 Gemini를 호출하지 않는다.
+    # 빈 데이터로 합성하면 모델이 수치·출처를 통째로 지어내기 때문.
+    if not any(results_by_indicator.values()):
+        return {**state, "report_markdown": ""}
     from datetime import datetime, timezone
     analyzed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     markdown = await build_report_markdown(state["category"], state["description"], results_by_indicator, analyzed_at, state["search_source"])

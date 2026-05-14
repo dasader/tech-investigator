@@ -33,7 +33,7 @@ async def search_papers_for_indicator(
             headers=headers,
             service_name="Semantic Scholar",
             context=keywords,
-            inter_attempt_sleep=1.1,
+            inter_attempt_sleep=1.3,
         )
         data = payload.get("data", [])
 
