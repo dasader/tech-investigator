@@ -4,6 +4,7 @@ from app.config import settings
 from app.agents import scopus_agent, openalex_agent
 from app.agents._http_retry import get_with_retry
 
+
 def _norm(s: str | None) -> str:
     return (s or "").strip().lower()
 

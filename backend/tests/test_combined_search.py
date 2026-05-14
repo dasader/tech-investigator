@@ -31,6 +31,7 @@ def test_same_doi_merges_field_level_best_of():
     assert m["country_lookup_done"] is True            # OpenAlex 기여 → 전파
     assert m["citation_count"] == 12                   # max
     assert m["journal_name"] == "Nature"               # non-null 우선
+    assert m["paper_id"] == "s2-id"                     # first_truthy → S2 우선
 
 
 def test_dedup_by_title_when_no_doi():
