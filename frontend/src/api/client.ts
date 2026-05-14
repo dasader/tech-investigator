@@ -6,7 +6,7 @@ export const createTechInput = (data: {
   category: string;
   description: string;
   user_email?: string;
-  search_source?: string;
+  search_source?: "combined" | "scopus";
 }) => api.post("/tech-input", data).then(r => r.data);
 
 export const generateIndicators = (queryId: number) =>
