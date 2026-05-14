@@ -60,3 +60,66 @@ def test_result_sorted_by_citation_desc():
     high = _oa(doi="10.1/high", title="high", citation=99)
     result = merge_papers([low], [high])
     assert [p["citation_count"] for p in result] == [99, 3]
+
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+from app.agents.search_agent import search_combined
+
+
+def _sem():
+    return asyncio.Semaphore(1)
+
+
+@pytest.mark.asyncio
+async def test_search_combined_merges_both_sources():
+    s2_papers = [{"paper_id": "s2", "title": "A", "abstract": "x", "year": 2024,
+                  "citation_count": 5, "doi": "10.1/a", "journal_name": None, "country": None}]
+    oa_papers = [{"paper_id": "oa", "title": "B", "abstract": "y", "year": 2024,
+                  "citation_count": 9, "doi": "10.1/b", "journal_name": None,
+                  "country": "Japan", "country_lookup_done": True}]
+    with patch("app.agents.search_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=s2_papers)), \
+         patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=oa_papers)):
+        result = await search_combined(
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+    assert {p["doi"] for p in result} == {"10.1/a", "10.1/b"}
+
+
+@pytest.mark.asyncio
+async def test_search_combined_degrades_when_s2_fails():
+    oa_papers = [{"paper_id": "oa", "title": "B", "abstract": "y", "year": 2024,
+                  "citation_count": 9, "doi": "10.1/b", "journal_name": None,
+                  "country": "Japan", "country_lookup_done": True}]
+    with patch("app.agents.search_agent.search_papers_for_indicator",
+               new=AsyncMock(side_effect=RuntimeError("S2 down"))), \
+         patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=oa_papers)):
+        result = await search_combined(
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+    assert [p["doi"] for p in result] == ["10.1/b"]
+
+
+@pytest.mark.asyncio
+async def test_search_combined_degrades_when_openalex_fails():
+    s2_papers = [{"paper_id": "s2", "title": "A", "abstract": "x", "year": 2024,
+                  "citation_count": 5, "doi": "10.1/a", "journal_name": None, "country": None}]
+    with patch("app.agents.search_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=s2_papers)), \
+         patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
+               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))):
+        result = await search_combined(
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+    assert [p["doi"] for p in result] == ["10.1/a"]
+
+
+@pytest.mark.asyncio
+async def test_search_combined_raises_when_both_fail():
+    with patch("app.agents.search_agent.search_papers_for_indicator",
+               new=AsyncMock(side_effect=RuntimeError("S2 down"))), \
+         patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
+               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))):
+        with pytest.raises(RuntimeError, match="combined search failed"):
+            await search_combined(
+                "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())

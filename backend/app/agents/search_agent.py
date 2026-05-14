@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import httpx
 from app.config import settings
 from app.agents import scopus_agent, openalex_agent
 from app.agents._http_retry import get_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 def _norm(s: str | None) -> str:
@@ -117,6 +120,47 @@ async def search_papers_for_indicator(
         if p.get("abstract")
     ]
     return papers
+
+
+async def search_combined(
+    keywords: str,
+    *,
+    s2_semaphore: asyncio.Semaphore,
+    openalex_semaphore: asyncio.Semaphore,
+    client: httpx.AsyncClient,
+    max_results: int | None = None,
+) -> list[dict]:
+    """OpenAlex + Semantic Scholar를 동시 검색해 병합. 그레이스풀 다운.
+
+    한 소스가 실패하면 warning 로그 후 그 소스는 빈 결과로 취급한다.
+    둘 다 실패하면 RuntimeError를 올린다.
+    """
+    s2_result, oa_result = await asyncio.gather(
+        search_papers_for_indicator(keywords, max_results, s2_semaphore, client=client),
+        openalex_agent.search_papers_for_indicator(
+            keywords, max_results, openalex_semaphore, client=client),
+        return_exceptions=True,
+    )
+    s2_failed = isinstance(s2_result, BaseException)
+    oa_failed = isinstance(oa_result, BaseException)
+    if s2_failed and oa_failed:
+        raise RuntimeError(
+            f"combined search failed for {keywords!r}: "
+            f"S2={s2_result}, OpenAlex={oa_result}"
+        )
+    if s2_failed:
+        logger.warning(
+            "combined search: S2 failed for %r (%s), using OpenAlex only",
+            keywords, s2_result,
+        )
+    if oa_failed:
+        logger.warning(
+            "combined search: OpenAlex failed for %r (%s), using S2 only",
+            keywords, oa_result,
+        )
+    s2_papers = [] if s2_failed else s2_result
+    oa_papers = [] if oa_failed else oa_result
+    return merge_papers(s2_papers, oa_papers)
 
 
 async def search_all_sources(
