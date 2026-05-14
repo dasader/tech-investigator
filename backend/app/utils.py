@@ -35,9 +35,8 @@ async def run_sync_with_retry(fn, max_retries: int = 4, base_delay: float = 1.0)
 def get_engine_label(search_source: str) -> str:
     if search_source == "scopus":
         return "Scopus (Elsevier) + Gemini"
-    if search_source == "openalex":
-        return "OpenAlex + Gemini"
-    return "Semantic Scholar + Gemini"
+    # combined 및 기타 모든 값(마이그레이션 전 잔존 구값 포함) → 기본 라벨
+    return "OpenAlex + Semantic Scholar + Gemini"
 
 
 def get_search_source(db: Session, query_id: int) -> str:
