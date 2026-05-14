@@ -12,5 +12,7 @@ def test_engine_label_scopus():
     assert get_engine_label("scopus") == "Scopus (Elsevier) + Gemini"
 
 
-def test_engine_label_unknown_defaults_to_combined():
-    assert get_engine_label("anything_else") == "OpenAlex + Semantic Scholar + Gemini"
+def test_engine_label_legacy_values_default_to_combined():
+    # 마이그레이션 전 잔존 구값(semantic_scholar/openalex)도 기본 라벨로
+    assert get_engine_label("semantic_scholar") == "OpenAlex + Semantic Scholar + Gemini"
+    assert get_engine_label("openalex") == "OpenAlex + Semantic Scholar + Gemini"
