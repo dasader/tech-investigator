@@ -5,9 +5,8 @@ import { createTechInput } from "../api/client";
 interface Props { onNext: (queryId: number) => void; }
 
 const SOURCE_OPTIONS = [
-  { value: "semantic_scholar", label: "Semantic Scholar" },
-  { value: "scopus",           label: "Scopus (Elsevier)" },
-  { value: "openalex",         label: "OpenAlex" },
+  { value: "combined", label: "OpenAlex + Semantic Scholar" },
+  { value: "scopus",   label: "Scopus (Elsevier)" },
 ] as const;
 
 type SearchSource = typeof SOURCE_OPTIONS[number]["value"];
@@ -16,7 +15,7 @@ export default function InputPage({ onNext }: Props) {
   const [category,      setCategory]      = useState("");
   const [description,   setDescription]   = useState("");
   const [email,         setEmail]         = useState("");
-  const [searchSource,  setSearchSource]  = useState<SearchSource>("semantic_scholar");
+  const [searchSource,  setSearchSource]  = useState<SearchSource>("combined");
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState("");
 
@@ -40,7 +39,7 @@ export default function InputPage({ onNext }: Props) {
   };
 
   const sourceLabel =
-    SOURCE_OPTIONS.find((o) => o.value === searchSource)?.label ?? "Semantic Scholar";
+    SOURCE_OPTIONS.find((o) => o.value === searchSource)?.label ?? "OpenAlex + Semantic Scholar";
 
   return (
     <div className="min-h-[calc(100vh-61px)] flex items-center justify-center px-4 py-16">
