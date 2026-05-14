@@ -22,7 +22,7 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
         )
 
     tech_query = db.query(TechQuery).filter(TechQuery.id == job.query_id).first()
-    search_source = (tech_query.search_source if tech_query else None) or "semantic_scholar"
+    search_source = (tech_query.search_source if tech_query else None) or "combined"
     category = tech_query.category if tech_query else ""
     description = tech_query.description if tech_query else ""
 

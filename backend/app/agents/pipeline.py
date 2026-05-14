@@ -25,13 +25,12 @@ class PipelineState(TypedDict):
     report_markdown: str
     error: str
 
-# source별 검색 동시성. 각 외부 API의 rate limit보다 보수적으로 잡은
-# 운영 목표값이며, 정확한 계약상 한도가 아니다 (한도는 변동될 수 있음).
-CONCURRENCY = {"semantic_scholar": 1, "scopus": 5, "openalex": 10}
-
-
-def _concurrency_for(source: str) -> int:
-    return CONCURRENCY.get(source, 1)
+# search_source → {하위 소스: 동시성 한도}.
+# 외부 API rate limit 기반: Semantic Scholar ~1 req/s, OpenAlex ~100 req/s, Scopus ~9 req/s.
+SOURCE_PLAN: dict[str, dict[str, int]] = {
+    "combined": {"semantic_scholar": 1, "openalex": 10},
+    "scopus": {"scopus": 5},
+}
 
 
 def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str):
@@ -43,13 +42,14 @@ def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str
 
 async def search_node(state: PipelineState, db: Session, client: httpx.AsyncClient) -> PipelineState:
     _update_job(db, state["job_id"], 10.0, "논문 검색 중")
-    semaphore = asyncio.Semaphore(_concurrency_for(state["search_source"]))
+    plan = SOURCE_PLAN[state["search_source"]]
+    semaphores = {src: asyncio.Semaphore(n) for src, n in plan.items()}
     results = {}
     tasks = [
         search_all_sources(
             ind["search_keywords"] or ind["name"],
             source=state["search_source"],
-            semaphore=semaphore,
+            semaphores=semaphores,
             client=client,
         )
         for ind in state["indicators"]
@@ -154,7 +154,7 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "query_id": job.query_id,
         "category": query.category,
         "description": query.description,
-        "search_source": query.search_source or "semantic_scholar",
+        "search_source": query.search_source or "combined",
         "indicators": [
             {"id": i.id, "name": i.name, "unit": i.unit, "search_keywords": i.search_keywords}
             for i in indicators

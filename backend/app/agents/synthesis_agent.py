@@ -12,7 +12,7 @@ async def build_report_markdown(
     description: str,
     results_by_indicator: dict,
     analyzed_at: str,
-    search_source: str = "semantic_scholar",
+    search_source: str = "combined",
 ) -> str:
     summary_json = json.dumps(results_by_indicator, ensure_ascii=False, indent=2)
     engine_label = get_engine_label(search_source)

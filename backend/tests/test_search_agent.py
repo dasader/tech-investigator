@@ -1,6 +1,7 @@
+import asyncio
 import pytest
 import httpx
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.agents.search_agent import search_papers_for_indicator, search_all_sources
 
 pytestmark = pytest.mark.no_db
@@ -63,7 +64,7 @@ async def test_search_raises_on_timeout(mock_httpx_client):
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_scopus_when_specified(mock_httpx_client, monkeypatch):
+async def test_search_all_sources_scopus_dispatches(mock_httpx_client, monkeypatch):
     captured = {}
     async def fake_scopus(*args, **kwargs):
         captured["called"] = True
@@ -73,7 +74,9 @@ async def test_search_all_sources_uses_scopus_when_specified(mock_httpx_client, 
     from app.agents import search_agent
     monkeypatch.setattr(search_agent.scopus_agent, "search_papers_for_indicator", fake_scopus)
     client = mock_httpx_client()
-    results = await search_all_sources("HBM", source="scopus", max_results=5, client=client)
+    results = await search_all_sources(
+        "HBM", source="scopus", max_results=5,
+        semaphores={"scopus": asyncio.Semaphore(5)}, client=client)
 
     assert captured["called"] is True
     assert captured["client"] is client
@@ -81,26 +84,26 @@ async def test_search_all_sources_uses_scopus_when_specified(mock_httpx_client, 
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_semantic_scholar_by_default(mock_httpx_client):
-    client = mock_httpx_client(json_body=MOCK_SS_RESPONSE)
-    results = await search_all_sources("HBM", max_results=5, client=client)
-    assert results[0]["title"] == "HBM3E: High Bandwidth Memory"
+async def test_search_all_sources_combined_dispatches(monkeypatch):
+    captured = {}
+    async def fake_combined(keywords, *, s2_semaphore, openalex_semaphore, client, max_results=None):
+        captured["s2_sem"] = s2_semaphore
+        captured["oa_sem"] = openalex_semaphore
+        return [{"title": "merged"}]
+    from app.agents import search_agent
+    monkeypatch.setattr(search_agent, "search_combined", fake_combined)
+    s2_sem, oa_sem = asyncio.Semaphore(1), asyncio.Semaphore(10)
+    results = await search_all_sources(
+        "HBM", source="combined",
+        semaphores={"semantic_scholar": s2_sem, "openalex": oa_sem},
+        client=MagicMock())
+
+    assert captured["s2_sem"] is s2_sem
+    assert captured["oa_sem"] is oa_sem
+    assert results[0]["title"] == "merged"
 
 
 @pytest.mark.asyncio
-async def test_search_all_sources_uses_openalex_when_specified(mock_httpx_client, monkeypatch):
-    captured = {}
-    async def fake_openalex(*args, **kwargs):
-        captured["called"] = True
-        captured["client"] = kwargs.get("client")
-        return [{"title": "OpenAlex Paper", "abstract": "abstract", "doi": "10.x/y",
-                 "year": 2024, "citation_count": 12, "paper_id": "OA1", "country": "South Korea",
-                 "journal_name": "Nature"}]
-    from app.agents import search_agent
-    monkeypatch.setattr(search_agent.openalex_agent, "search_papers_for_indicator", fake_openalex)
-    client = mock_httpx_client()
-    results = await search_all_sources("HBM", source="openalex", max_results=5, client=client)
-
-    assert captured["called"] is True
-    assert captured["client"] is client
-    assert results[0]["title"] == "OpenAlex Paper"
+async def test_search_all_sources_unknown_raises():
+    with pytest.raises(ValueError, match="unknown search_source"):
+        await search_all_sources("HBM", source="bogus", semaphores={}, client=MagicMock())

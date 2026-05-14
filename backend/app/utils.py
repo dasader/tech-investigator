@@ -42,4 +42,4 @@ def get_engine_label(search_source: str) -> str:
 def get_search_source(db: Session, query_id: int) -> str:
     from app.models.tech_query import TechQuery
     query_obj = db.query(TechQuery).filter(TechQuery.id == query_id).first()
-    return (query_obj.search_source if query_obj else None) or "semantic_scholar"
+    return (query_obj.search_source if query_obj else None) or "combined"

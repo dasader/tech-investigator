@@ -7,7 +7,7 @@ class TechQueryCreate(BaseModel):
     category: str
     description: str
     user_email: Optional[str] = None
-    search_source: Literal["semantic_scholar", "scopus", "openalex"] = "semantic_scholar"
+    search_source: Literal["combined", "scopus"] = "combined"
 
 
 class TechQueryOut(BaseModel):

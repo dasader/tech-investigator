@@ -165,14 +165,21 @@ async def search_combined(
 
 async def search_all_sources(
     keywords: str,
-    source: str = "semantic_scholar",
+    source: str,
     max_results: int | None = None,
-    semaphore: asyncio.Semaphore | None = None,
     *,
+    semaphores: dict[str, asyncio.Semaphore],
     client: httpx.AsyncClient,
 ) -> list[dict]:
     if source == "scopus":
-        return await scopus_agent.search_papers_for_indicator(keywords, max_results, semaphore, client=client)
-    if source == "openalex":
-        return await openalex_agent.search_papers_for_indicator(keywords, max_results, semaphore, client=client)
-    return await search_papers_for_indicator(keywords, max_results, semaphore, client=client)
+        return await scopus_agent.search_papers_for_indicator(
+            keywords, max_results, semaphores["scopus"], client=client)
+    if source == "combined":
+        return await search_combined(
+            keywords,
+            s2_semaphore=semaphores["semantic_scholar"],
+            openalex_semaphore=semaphores["openalex"],
+            client=client,
+            max_results=max_results,
+        )
+    raise ValueError(f"unknown search_source: {source!r}")
