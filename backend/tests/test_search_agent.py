@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 import httpx
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from app.agents.search_agent import search_papers_for_indicator, search_all_sources
 
 pytestmark = pytest.mark.no_db

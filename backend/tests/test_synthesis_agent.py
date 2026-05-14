@@ -14,7 +14,7 @@ def _state(validated_values: dict, indicators: list[dict]) -> PipelineState:
         "query_id": 1,
         "category": "반도체·디스플레이",
         "description": "ALD 공정",
-        "search_source": "semantic_scholar",
+        "search_source": "combined",
         "indicators": indicators,
         "search_results": {},
         "extracted_values": {},
