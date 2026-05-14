@@ -34,6 +34,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # 주의: 이 UPDATE는 마이그레이션 이후 정상 생성된 combined 행까지
+    # semantic_scholar로 되돌린다 — combined 값 자체가 사라지므로 구분 불가.
     op.alter_column(
         "tech_queries", "search_source",
         server_default="semantic_scholar",
