@@ -1,5 +1,7 @@
+import asyncio
 import pytest
-from app.agents.search_agent import merge_papers
+from unittest.mock import AsyncMock, MagicMock, patch
+from app.agents.search_agent import merge_papers, search_combined
 
 pytestmark = pytest.mark.no_db
 
@@ -60,11 +62,6 @@ def test_result_sorted_by_citation_desc():
     high = _oa(doi="10.1/high", title="high", citation=99)
     result = merge_papers([low], [high])
     assert [p["citation_count"] for p in result] == [99, 3]
-
-
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from app.agents.search_agent import search_combined
 
 
 def _sem():
