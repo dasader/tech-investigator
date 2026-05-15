@@ -25,6 +25,11 @@ BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치�
 3. 지표에 unit이 없으면 논문의 단위를 그대로 반환하세요.
 4. 응답의 unit 필드는 항상 지표의 정의된 단위를 사용하세요 (논문 표기 단위가 아님).
 
+추출 힌트 활용:
+- 지표에 extraction_hint가 있으면 해당 단서를 참고해 정확히 매칭하세요.
+- 단서는 단위 변형·혼동 가능 개념·합리적 범위에 대한 가이드입니다.
+- 단서가 없으면 무시하고 진행하세요.
+
 반드시 아래 형식의 JSON 배열로만 응답하세요. 수치가 없으면 value를 null로:
 [
   {{"indicator_id": <id>, "value": <숫자|null>, "unit": "<단위|null>", "confidence_score": <0.0~1.0>, "quote": "<근거 문장|null>"}},
@@ -74,7 +79,16 @@ async def extract_metrics_from_paper(
     sem = semaphore or asyncio.Semaphore(1)
     async with sem:
         indicators_json = json.dumps(
-            [{"id": ind["id"], "name": ind["name"], "unit": ind.get("unit") or ""} for ind in indicators],
+            [
+                {
+                    "id": ind["id"],
+                    "name": ind["name"],
+                    "unit": ind.get("unit") or "",
+                    **({"extraction_hint": ind["extraction_hint"]}
+                       if ind.get("extraction_hint") else {}),
+                }
+                for ind in indicators
+            ],
             ensure_ascii=False,
         )
         prompt = BATCH_EXTRACTION_PROMPT.format(

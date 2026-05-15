@@ -120,3 +120,63 @@ async def test_skips_openalex_when_country_lookup_done():
     mock_openalex.assert_not_called()
     _, payload = results[0]
     assert payload["country"] is None
+
+
+INDICATOR_WITH_HINT = {
+    "id": 7,
+    "name": "TSV 피치",
+    "unit": "µm",
+    "extraction_hint": "TSV 피치는 보통 µm 단위. HBM 컨텍스트에서 4~10 µm 범위.",
+}
+
+
+@pytest.mark.asyncio
+async def test_extraction_prompt_includes_hint_when_present():
+    """지표에 extraction_hint가 있으면 Gemini prompt에 hint 문자열이 포함된다."""
+    captured_prompts: list[str] = []
+
+    def _capture(**kwargs):
+        captured_prompts.append(kwargs.get("contents", ""))
+        return _gemini_response([{
+            "indicator_id": 7, "value": 5.5, "unit": "µm",
+            "confidence_score": 0.9, "quote": "5.5 µm pitch",
+        }])
+
+    with patch("app.agents.extraction_agent.genai_client") as mock_client, \
+         patch("app.agents.extraction_agent._get_country_from_openalex",
+               new=AsyncMock(return_value=None)):
+        mock_client.models.generate_content.side_effect = _capture
+        await extract_metrics_from_paper(PAPER_WITH_VALUE, [INDICATOR_WITH_HINT], client=_client())
+
+    assert len(captured_prompts) == 1
+    prompt = captured_prompts[0]
+    assert "TSV 피치는 보통 µm 단위" in prompt
+    assert "extraction_hint" in prompt
+
+
+@pytest.mark.asyncio
+async def test_extraction_prompt_omits_hint_when_absent():
+    """extraction_hint가 None/누락이면 prompt에 hint 키가 들어가지 않는다."""
+    captured_prompts: list[str] = []
+
+    def _capture(**kwargs):
+        captured_prompts.append(kwargs.get("contents", ""))
+        return _gemini_response([{
+            "indicator_id": 1, "value": 1228.0, "unit": "GB/s",
+            "confidence_score": 0.9, "quote": "1228 GB/s",
+        }])
+
+    with patch("app.agents.extraction_agent.genai_client") as mock_client, \
+         patch("app.agents.extraction_agent._get_country_from_openalex",
+               new=AsyncMock(return_value=None)):
+        mock_client.models.generate_content.side_effect = _capture
+        await extract_metrics_from_paper(PAPER_WITH_VALUE, [INDICATOR_BANDWIDTH], client=_client())
+
+    assert len(captured_prompts) == 1
+    # The prompt template itself mentions "extraction_hint" in the instructions;
+    # what matters is the serialised indicators_json does NOT carry the key.
+    import re as _re
+    indicators_json_match = _re.search(r'추출 대상 지표 \(JSON\):\n(\[.*?\])', captured_prompts[0], _re.DOTALL)
+    assert indicators_json_match, "Could not find indicators JSON section in prompt"
+    indicators_section = indicators_json_match.group(1)
+    assert "extraction_hint" not in indicators_section
