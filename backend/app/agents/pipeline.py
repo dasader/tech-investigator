@@ -156,7 +156,13 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "description": query.description,
         "search_source": query.search_source or "combined",
         "indicators": [
-            {"id": i.id, "name": i.name, "unit": i.unit, "search_keywords": i.search_keywords}
+            {
+                "id": i.id,
+                "name": i.name,
+                "unit": i.unit,
+                "search_keywords": i.search_keywords,
+                "extraction_hint": i.extraction_hint,
+            }
             for i in indicators
         ],
         "search_results": {},

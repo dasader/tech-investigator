@@ -23,6 +23,7 @@ async def generate_indicator_draft(query_id: int, db: Session = Depends(get_db))
             unit=d.get("unit"),
             description=d.get("description"),
             search_keywords=d.get("search_keywords"),
+            extraction_hint=d.get("extraction_hint"),
         )
         db.add(ind)
         indicators.append(ind)
