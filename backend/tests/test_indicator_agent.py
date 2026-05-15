@@ -47,3 +47,48 @@ async def test_invalid_json_raises():
         mock_client.models.generate_content.return_value = mock_response
         with pytest.raises(ValueError, match="Invalid JSON"):
             await generate_indicators("반도체", "HBM")
+
+
+@pytest.mark.asyncio
+async def test_generate_indicators_parses_extraction_hint():
+    with patch("app.agents.indicator_agent.genai_client") as mock_client:
+        mock_response = MagicMock()
+        mock_response.text = json.dumps([
+            {
+                "name": "TSV 피치",
+                "unit": "µm",
+                "description": "관통전극 간격",
+                "search_keywords": "HBM TSV pitch OR through-silicon-via pitch um",
+                "extraction_hint": "TSV 피치는 보통 µm 단위. HBM 컨텍스트에서 4~10 µm 범위. 마이크로범프 피치와 혼동 주의.",
+            }
+        ])
+        mock_client.models.generate_content.return_value = mock_response
+        result = await generate_indicators("반도체", "HBM 적층 기술")
+    assert result[0]["extraction_hint"].startswith("TSV 피치")
+
+
+@pytest.mark.asyncio
+async def test_generate_indicators_handles_missing_extraction_hint():
+    """Gemini가 legacy 형식(hint 누락)으로 응답해도 KeyError 없이 통과한다."""
+    with patch("app.agents.indicator_agent.genai_client") as mock_client:
+        mock_response = MagicMock()
+        mock_response.text = json.dumps([
+            {
+                "name": "대역폭",
+                "unit": "GB/s",
+                "description": "메모리 초당 전송",
+                "search_keywords": "HBM bandwidth GB/s",
+            }
+        ])
+        mock_client.models.generate_content.return_value = mock_response
+        result = await generate_indicators("반도체", "HBM")
+    assert "extraction_hint" not in result[0]
+    assert result[0]["name"] == "대역폭"
+
+
+def test_indicator_prompt_contains_quote_and_or_and_hint_guidance():
+    """INDICATOR_PROMPT가 따옴표 금지, OR 표현, extraction_hint 가이드를 포함한다."""
+    from app.agents.indicator_agent import INDICATOR_PROMPT
+    assert "따옴표" in INDICATOR_PROMPT
+    assert "OR" in INDICATOR_PROMPT
+    assert "extraction_hint" in INDICATOR_PROMPT

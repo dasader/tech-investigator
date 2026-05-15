@@ -17,8 +17,23 @@ INDICATOR_PROMPT = """당신은 국가전략기술 분야의 전문가입니다.
   "name": "지표명 (한글)",
   "unit": "단위 (예: GB/s, nm, %)",
   "description": "지표 설명 (1문장)",
-  "search_keywords": "영어 논문 검색 키워드 (예: HBM bandwidth GB/s)"
+  "search_keywords": "넓은 OR 표현 영어 키워드",
+  "extraction_hint": "1~2문장 추출 단서"
 }}
+
+search_keywords 작성 규칙:
+- 따옴표 구문검색("...")을 사용하지 마세요 — 결과가 과도하게 좁아집니다.
+- 핵심 용어 2~3개로 제한하세요. "300mm" 같은 과도한 한정어, 특정 모델명·세대명은 배제하세요.
+- 약어와 정식 명칭을 OR로 함께 포함하세요.
+- 좋은 예: "WIWNU OR within-wafer non-uniformity"
+- 나쁜 예: "\"spatial ALD\" throughput WPH 300mm"
+
+extraction_hint 작성 규칙:
+- 1~2문장의 자연어 단서.
+- 이 지표가 논문에서 보통 어떤 형태로 보고되는지 명시.
+- 헷갈리기 쉬운 단위 변형(예: GB/s vs TB/s, µm vs nm)이나 혼동 가능 개념을 언급.
+- 합리적 수치 범위가 있다면 간단히 (예: "HBM 컨텍스트에서 보통 4~10 µm 범위").
+- 예: "TSV 피치는 보통 µm 단위. HBM 컨텍스트에서는 4~10 µm 범위. 마이크로범프 피치(bump pitch)와 혼동 주의."
 
 규칙:
 - 반드시 측정 가능한 수치 지표만 포함 (정성 지표 제외)
