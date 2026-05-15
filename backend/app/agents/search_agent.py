@@ -121,6 +121,10 @@ async def search_papers_for_indicator(
         for p in data
         if p.get("abstract")
     ]
+    logger.info(
+        "[S2] keywords=%r returned=%d after_abstract_filter=%d",
+        keywords, len(data), len(papers),
+    )
     return papers
 
 
