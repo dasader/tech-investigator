@@ -11,6 +11,7 @@ class Indicator(Base):
     unit = Column(String(50), nullable=True)
     description = Column(String(500), nullable=True)
     search_keywords = Column(String(500), nullable=True)
+    extraction_hint = Column(String(500), nullable=True)
     confirmed_by_user = Column(Boolean, default=False)
 
     metric_values = relationship("MetricValue", back_populates="indicator", cascade="all, delete-orphan")

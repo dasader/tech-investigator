@@ -7,6 +7,7 @@ class IndicatorBase(BaseModel):
     unit: Optional[str] = None
     description: Optional[str] = None
     search_keywords: Optional[str] = None
+    extraction_hint: Optional[str] = None
 
 
 class IndicatorCreate(IndicatorBase):
@@ -18,6 +19,7 @@ class IndicatorUpdate(BaseModel):
     unit: Optional[str] = None
     description: Optional[str] = None
     search_keywords: Optional[str] = None
+    extraction_hint: Optional[str] = None
     confirmed_by_user: Optional[bool] = None
 
 
