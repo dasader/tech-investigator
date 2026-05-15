@@ -22,29 +22,31 @@ def _dedup_key(paper: dict) -> str | None:
     return None
 
 
+def _longer(x: str | None, y: str | None) -> str:
+    x, y = x or "", y or ""
+    return x if len(x) >= len(y) else y
+
+
+def _first_truthy(*vals):
+    for v in vals:
+        if v:
+            return v
+    return None
+
+
 def _merge_two(a: dict, b: dict) -> dict:
     """a, b는 같은 논문. 필드별 best-of 병합."""
-    def longer(x: str | None, y: str | None) -> str:
-        x, y = x or "", y or ""
-        return x if len(x) >= len(y) else y
-
-    def first_truthy(*vals):
-        for v in vals:
-            if v:
-                return v
-        return None
-
     merged = dict(a)
-    merged["abstract"] = longer(a.get("abstract"), b.get("abstract"))
-    merged["title"] = first_truthy(a.get("title"), b.get("title")) or ""
-    merged["year"] = first_truthy(a.get("year"), b.get("year"))
-    merged["journal_name"] = first_truthy(a.get("journal_name"), b.get("journal_name"))
-    merged["country"] = first_truthy(a.get("country"), b.get("country"))
+    merged["abstract"] = _longer(a.get("abstract"), b.get("abstract"))
+    merged["title"] = _first_truthy(a.get("title"), b.get("title")) or ""
+    merged["year"] = _first_truthy(a.get("year"), b.get("year"))
+    merged["journal_name"] = _first_truthy(a.get("journal_name"), b.get("journal_name"))
+    merged["country"] = _first_truthy(a.get("country"), b.get("country"))
     merged["citation_count"] = max(
         int(a.get("citation_count") or 0), int(b.get("citation_count") or 0)
     )
-    merged["doi"] = first_truthy(a.get("doi"), b.get("doi"))
-    merged["paper_id"] = first_truthy(a.get("paper_id"), b.get("paper_id"))
+    merged["doi"] = _first_truthy(a.get("doi"), b.get("doi"))
+    merged["paper_id"] = _first_truthy(a.get("paper_id"), b.get("paper_id"))
     # OpenAlex가 기여했으면 country_lookup_done=True → extraction_agent의 OpenAlex 재조회 스킵
     if a.get("country_lookup_done") or b.get("country_lookup_done"):
         merged["country_lookup_done"] = True
