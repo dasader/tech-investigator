@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import tech_input, indicators, jobs, results, websocket
+from app.routers import tech_input, indicators, jobs, results
 
 # 모든 모델을 먼저 임포트해야 SQLAlchemy relationship이 올바르게 초기화됨
 import app.models.tech_query  # noqa: F401
@@ -21,7 +21,6 @@ app.include_router(tech_input.router, prefix="/api")
 app.include_router(indicators.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(results.router, prefix="/api")
-app.include_router(websocket.router)
 
 
 @app.get("/health")

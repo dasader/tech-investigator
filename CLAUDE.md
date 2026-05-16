@@ -47,7 +47,7 @@ cd frontend && npm install && npm run dev
   → Gemini가 지표 목록 제안         # IndicatorAgent
   → 사용자 지표 확정
   → POST /api/queries/{id}/jobs    # Celery 태스크 큐잉
-  → WebSocket /ws/jobs/{id}        # 실시간 진행 상태
+  → GET /api/jobs/{id}             # 3초 간격 polling (진행 상태)
   → GET /api/jobs/{id}/results     # 완료 후 결과 조회
   → GET /api/jobs/{id}/pdf         # 보고서 HTML (인쇄 → PDF)
 ```
@@ -108,4 +108,4 @@ indicators   → metric_values (indicator_id FK, value/unit/year/country/confide
 React SPA (Vite + Tailwind), 라우터 없이 `App.tsx`의 `step` 상태로 4단계 전환:
 `input` → `indicators` → `status` → `results`
 
-진행 상태는 WebSocket(`useJobStatus.ts`)으로 polling. 결과 페이지는 보고서/데이터 탭으로 구분되며, 데이터 탭에는 `TimeSeriesChart`(연도별)와 `CountryCompareChart`(국가별) 차트 포함.
+진행 상태는 REST polling(`useJobStatus.ts`, 3초 간격 `GET /api/jobs/{id}`)으로 갱신. 결과 페이지는 단일 화면에 "지표별 글로벌 최고 달성치" 표(보고서에서 파싱)와 "지표별 수치 데이터"가 함께 표시되며, `TimeSeriesChart`(연도별)와 `CountryCompareChart`(국가별) 차트 포함.

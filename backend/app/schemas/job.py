@@ -9,6 +9,7 @@ class JobOut(BaseModel):
     status: str
     progress_pct: float
     current_step: Optional[str] = None
+    queue_position: Optional[int] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
