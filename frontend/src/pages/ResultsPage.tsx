@@ -1,39 +1,13 @@
 import { useEffect, useState } from "react";
 import MetricTable from "../components/MetricTable";
+import GlobalBestTable from "../components/GlobalBestTable";
 import { getResults } from "../api/client";
-import { printCurrentView, exportReportAsPdf } from "../utils/exportPdf";
+import { printCurrentView } from "../utils/exportPdf";
 import { getEngineLabel } from "../utils/format";
+import { extractGlobalBestTable } from "../utils/markdownTable";
 import type { ResultsData } from "../types/results";
 
 interface Props { jobId: number; }
-
-type Tab = "report" | "data";
-
-function TabButton({ id, label, active, onClick }: { id: Tab; label: string; active: boolean; onClick: (id: Tab) => void }) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      style={{
-        padding: "12px 24px",
-        fontSize: "13px",
-        fontWeight: 600,
-        borderTop: "none",
-        borderLeft: "none",
-        borderRight: "none",
-        borderBottomWidth: "2.5px",
-        borderBottomStyle: "solid",
-        borderBottomColor: active ? "var(--color-amber)" : "transparent",
-        cursor: "pointer",
-        transition: "all 0.2s",
-        background: "none",
-        color: active ? "var(--color-amber)" : "var(--color-text-3)",
-        fontFamily: "var(--font-body)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 function SummaryBanner({ data }: { data: ResultsData }) {
   const totalPapers = data.indicators.reduce((acc, i) => acc + i.metric_values.length, 0);
@@ -65,64 +39,30 @@ function SummaryBanner({ data }: { data: ResultsData }) {
   );
 }
 
-function SpinnerIcon({ className }: { className: string }) {
-  return (
-    <svg className={`animate-spin shrink-0 ${className}`} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-    </svg>
-  );
-}
-
-function PdfButton({ label, progress, onClick }: { label: string; progress: string | null; onClick: () => void }) {
+function PdfButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      disabled={progress !== null}
-      className="mb-1 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+      className="mb-1 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
       style={{
-        background: progress ? "var(--color-border)" : "var(--color-navy-dark)",
+        background: "var(--color-navy-dark)",
         color: "var(--color-text-inv)",
       }}
     >
-      {progress ? (
-        <>
-          <SpinnerIcon className="w-3.5 h-3.5" />
-          <span className="truncate max-w-[180px]">{progress}</span>
-        </>
-      ) : (
-        <>
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-          </svg>
-          {label}
-        </>
-      )}
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+      </svg>
+      데이터 PDF 저장
     </button>
   );
 }
 
 export default function ResultsPage({ jobId }: Props) {
-  const [results,           setResults]           = useState<ResultsData | null>(null);
-  const [tab,               setTab]               = useState<Tab>("report");
-  const [reportPdfProgress, setReportPdfProgress] = useState<string | null>(null);
+  const [results, setResults] = useState<ResultsData | null>(null);
 
   useEffect(() => {
     void getResults(jobId).then((data: ResultsData) => setResults(data));
   }, [jobId]);
-
-  const handlePdfExport = async (
-    exportFn: (data: ResultsData, setProgress: (s: string | null) => void) => Promise<void>,
-    setProgress: (s: string | null) => void,
-  ) => {
-    if (!results) return;
-    try {
-      await exportFn(results, setProgress);
-    } catch {
-      setProgress(null);
-      alert("PDF 생성 중 오류가 발생했습니다.");
-    }
-  };
 
   if (!results) {
     return (
@@ -135,6 +75,8 @@ export default function ResultsPage({ jobId }: Props) {
       </div>
     );
   }
+
+  const globalBest = extractGlobalBestTable(results.report_markdown);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
@@ -161,76 +103,36 @@ export default function ResultsPage({ jobId }: Props) {
         <SummaryBanner data={results} />
       </div>
 
-      <div
-        className="flex items-center justify-between mb-8 fade-up fade-up-1 no-print"
-        style={{ borderBottom: "1px solid var(--color-border)" }}
-      >
-        <div className="flex">
-          <TabButton id="report" label="보고서"    active={tab === "report"} onClick={setTab} />
-          <TabButton id="data"   label="분석 데이터" active={tab === "data"}   onClick={setTab} />
-        </div>
-
-        {tab === "report" && (
-          <PdfButton
-            label="보고서 PDF 저장"
-            progress={reportPdfProgress}
-            onClick={() => handlePdfExport(exportReportAsPdf, setReportPdfProgress)}
-          />
-        )}
-
-        {tab === "data" && (
-          <PdfButton
-            label="데이터 PDF 저장"
-            progress={null}
-            onClick={printCurrentView}
-          />
-        )}
+      <div className="flex items-center justify-end mb-6 no-print">
+        <PdfButton onClick={printCurrentView} />
       </div>
 
-      {/* Report tab */}
-      {tab === "report" && (
-        <div className="fade-up">
-          {results.report_markdown ? (
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{ border: "1px solid var(--color-border-subtle)" }}
-            >
-              <iframe
-                src={`/api/jobs/${jobId}/pdf`}
-                className="w-full border-0"
-                style={{ height: "82vh", display: "block" }}
-                title="분석 보고서"
-              />
-            </div>
-          ) : (
-            <div
-              className="text-center py-20 rounded-2xl"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border-subtle)", color: "var(--color-text-3)" }}
-            >
-              보고서 데이터가 없습니다.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Data tab */}
-      {tab === "data" && (
-        <div className="space-y-10 fade-up">
+      <div className="space-y-10 fade-up">
+        {globalBest && (
           <section>
             <h3
-              className="text-lg font-semibold mb-5"
+              className="text-lg font-semibold mb-4"
               style={{ fontFamily: "var(--font-heading)", color: "var(--color-navy-dark)" }}
             >
-              지표별 수치 데이터
+              지표별 글로벌 최고 달성치
             </h3>
-            <p className="text-xs mb-3 px-1" style={{ color: "var(--color-text-3)" }}>
-              ※ 각 행은 서로 다른 논문에서 추출한 데이터 포인트이며, 연도는 해당 논문의 발표 연도입니다.
-            </p>
-            <MetricTable data={results.indicators} />
+            <GlobalBestTable data={globalBest} />
           </section>
+        )}
 
-        </div>
-      )}
+        <section>
+          <h3
+            className="text-lg font-semibold mb-5"
+            style={{ fontFamily: "var(--font-heading)", color: "var(--color-navy-dark)" }}
+          >
+            지표별 수치 데이터
+          </h3>
+          <p className="text-xs mb-3 px-1" style={{ color: "var(--color-text-3)" }}>
+            ※ 각 행은 서로 다른 논문에서 추출한 데이터 포인트이며, 연도는 해당 논문의 발표 연도입니다.
+          </p>
+          <MetricTable data={results.indicators} />
+        </section>
+      </div>
     </div>
   );
 }
