@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     elsevier_api_key: str = ""
     openalex_api_key: str = ""
     job_timeout_minutes: int = 15
-    max_papers_per_indicator: int = 30
+    max_papers_per_indicator: int = 50
     top_results_per_indicator: int = 5
     min_confidence_score: float = 0.5
     search_year_from: int | None = None
