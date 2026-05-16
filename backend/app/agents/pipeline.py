@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import httpx
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 from app.agents.search_agent import search_all_sources
 from app.agents.extraction_agent import extract_metrics_from_paper
 from app.agents.validation_agent import validate_and_rank
@@ -80,15 +83,27 @@ async def extract_node(state: PipelineState, db: Session, client: httpx.AsyncCli
         extract_metrics_from_paper(group["paper"], group["indicators"], semaphore, client=client)
         for group in paper_groups.values()
     ]
-    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     extracted: dict = {ind["id"]: [] for ind in state["indicators"]}
-    for batch in batch_results:
-        if isinstance(batch, Exception):
-            continue
-        for ind_id, result in batch:
-            if ind_id in extracted:
-                extracted[ind_id].append(result)
+    total = len(tasks)
+    if total == 0:
+        return {**state, "extracted_values": extracted}
+
+    # 지표가 많을 때 commit이 폭주하지 않도록 ~20회로 throttle.
+    update_every = max(1, total // 20)
+    done = 0
+    for fut in asyncio.as_completed(tasks):
+        try:
+            batch = await fut
+            for ind_id, result in batch:
+                if ind_id in extracted:
+                    extracted[ind_id].append(result)
+        except Exception as e:
+            logger.warning("extract task failed: %s", e)
+        done += 1
+        if done == total or done % update_every == 0:
+            progress = 40.0 + 30.0 * done / total
+            _update_job(db, state["job_id"], progress, f"수치 추출 중 ({done}/{total})")
 
     return {**state, "extracted_values": extracted}
 
