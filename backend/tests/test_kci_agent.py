@@ -140,3 +140,55 @@ async def test_kci_search_filters_no_abstract(monkeypatch):
     )
 
     assert results == []
+
+
+MOCK_SEARCH_XML_2RECORDS = """<?xml version="1.0" encoding="UTF-8"?>
+<resultList>
+  <outputData>
+    <record>
+      <article-id pubidtype="kciid">ART001</article-id>
+      <article-id pubidtype="doi">10.1234/foo.2024.001</article-id>
+      <title-group><article-title language="eng">Paper One</article-title></title-group>
+      <pub-year>2024</pub-year><citation-count>10</citation-count>
+    </record>
+    <record>
+      <article-id pubidtype="kciid">ART002</article-id>
+      <title-group><article-title language="eng">Paper Two</article-title></title-group>
+      <pub-year>2024</pub-year><citation-count>5</citation-count>
+    </record>
+  </outputData>
+</resultList>"""
+
+
+@pytest.mark.asyncio
+async def test_kci_detail_partial_failure(monkeypatch, caplog):
+    from unittest.mock import MagicMock
+    monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
+    client = AsyncMock(spec=httpx.AsyncClient)
+
+    async def fake_get(url, params=None, headers=None, timeout=None):
+        api_code = (params or {}).get("apiCode")
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        if api_code == "articleSearch":
+            response.status_code = 200
+            response.text = MOCK_SEARCH_XML_2RECORDS
+            return response
+        # articleDetail: ART001 성공, ART002 실패(500)
+        if params.get("id") == "ART001":
+            response.status_code = 200
+            response.text = MOCK_DETAIL_XML
+            return response
+        err_response = MagicMock(status_code=500)
+        raise httpx.HTTPStatusError("500", request=MagicMock(), response=err_response)
+
+    client.get.side_effect = fake_get
+
+    with caplog.at_level("WARNING", logger="app.agents.kci_agent"):
+        results = await kci_agent.search_papers_for_indicator(
+            "HBM bandwidth", max_results=5, client=client,
+        )
+
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "ART001"
+    assert any("articleDetail failed" in r.message for r in caplog.records)
