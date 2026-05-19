@@ -95,7 +95,7 @@ response = await run_sync(lambda: genai_client.models.generate_content(...))
 
 **한국어 UI 텍스트** — `Job.current_step`(예: "논문 검색 중", "수치 추출 중", "완료")과 이메일 본문 등 사용자 노출 문자열은 한국어로 고정. 변경 시 프론트엔드/이메일 모두 확인.
 
-**KCI 통합** — KCI Open API(`open.kci.go.kr`)는 XML 응답 + articleSearch/articleDetail 2단 호출. `kci_agent.py`가 N+1 호출을 내부에 캡슐화하고 paper dict는 S2/OpenAlex와 동일한 형식으로 반환. country는 항상 "South Korea" default + `country_lookup_done=True`로 set되어 `extraction_agent`의 OpenAlex 재조회를 차단.
+**KCI 통합** — KCI Open API(`open.kci.go.kr`)는 XML 응답 + articleSearch/articleDetail 2단 호출. `kci_agent.py`가 N+1 호출을 내부에 캡슐화하고 paper dict는 S2/OpenAlex와 동일한 형식으로 반환. country는 항상 "South Korea" default + `country_lookup_done=True`로 set되어 `extraction_agent`의 OpenAlex 재조회를 차단. `KCI_API_KEY`는 **루트 `.env`**에 설정 (docker-compose의 `env_file: .env`가 루트 기준 — `backend/.env.example`은 빌드 컨텍스트에 우연히 들어있을 뿐 실제로 읽히지 않음).
 
 ### DB 스키마
 

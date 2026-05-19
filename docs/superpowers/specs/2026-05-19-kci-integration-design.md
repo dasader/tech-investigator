@@ -183,13 +183,15 @@ class Settings(BaseSettings):
     kci_api_key: str = ""
 ```
 
-### 8.2 `.env.example`, `backend/.env.example`
+### 8.2 `.env.example` (루트)
 
 ```
 KCI_API_KEY=your_kci_open_api_key
 ```
 
 기존 패턴(`SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_API_KEY` 등)과 동일.
+
+**중요**: 실제 사용되는 환경변수 파일은 **루트 `.env`** 한 곳뿐이다. `docker-compose.yml`의 `env_file: .env`가 compose 파일이 위치한 루트 기준이라, 거기서 읽어 컨테이너에 환경변수로 주입한다. `backend/.env.example`(과 그 짝인 `backend/.env`)는 과거 잔존 파일로, 빌드 컨텍스트(`./backend`) 안에 있을 뿐 Docker나 Pydantic이 우선적으로 읽지 않는다(루트 `.env`의 환경변수가 이미 주입돼 있어 덮어쓰임). 이번 task의 `backend/.env.example` 갱신은 일관성 유지를 위한 것이며 실제 키 설정은 루트 `.env`에 한다.
 
 ## 9. 국가·abstract·downstream 동작
 
