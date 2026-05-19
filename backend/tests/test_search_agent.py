@@ -107,3 +107,26 @@ async def test_search_all_sources_combined_dispatches(monkeypatch):
 async def test_search_all_sources_unknown_raises():
     with pytest.raises(ValueError, match="unknown search_source"):
         await search_all_sources("HBM", source="bogus", semaphores={}, client=MagicMock())
+
+
+def test_merge_papers_3way_dedup_by_doi():
+    from app.agents.search_agent import merge_papers
+    s2 = [{"doi": "10.1/x", "title": "Paper X", "abstract": "short", "citation_count": 5, "country": None}]
+    oa = [{"doi": "10.1/x", "title": "Paper X", "abstract": "much longer abstract content", "citation_count": 8, "country": "USA"}]
+    kci = [
+        {"doi": "10.1/x", "title": "Paper X", "abstract": "", "citation_count": 0, "country": "South Korea", "country_lookup_done": True},
+        {"doi": "10.2/y", "title": "Paper Y", "abstract": "ko-only paper", "citation_count": 2, "country": "South Korea"},
+    ]
+
+    merged = merge_papers(s2, oa, kci)
+
+    by_doi = {p["doi"]: p for p in merged}
+    # 중복 DOI 1건 + KCI-only 1건 = 2건
+    assert len(merged) == 2
+    # OA country가 우선, KCI default가 fallback
+    assert by_doi["10.1/x"]["country"] == "USA"
+    assert by_doi["10.2/y"]["country"] == "South Korea"
+    # 가장 긴 abstract 유지
+    assert by_doi["10.1/x"]["abstract"] == "much longer abstract content"
+    # citation_count는 max
+    assert by_doi["10.1/x"]["citation_count"] == 8

@@ -53,22 +53,24 @@ def _merge_two(a: dict, b: dict) -> dict:
     return merged
 
 
-def merge_papers(s2_papers: list[dict], openalex_papers: list[dict]) -> list[dict]:
-    """OpenAlex + S2 검색 결과를 DOI(없으면 title) 기준 필드별 best-of로 병합.
+def merge_papers(*paper_lists: list[dict]) -> list[dict]:
+    """N개 검색 소스의 결과를 DOI(없으면 title) 기준 필드별 best-of로 병합.
 
     dedup 키가 없는(DOI·title 모두 없는) 논문은 그대로 유지한다.
     결과는 citation_count 내림차순 정렬 — downstream 절단 시 인용수 높은 논문이 생존한다.
+    호출 순서가 first-truthy 필드(country, title, doi)에 영향: 먼저 들어온 값이 우선.
     """
     merged: dict[str, dict] = {}
     no_key: list[dict] = []
-    for paper in [*s2_papers, *openalex_papers]:
-        key = _dedup_key(paper)
-        if key is None:
-            no_key.append(paper)
-        elif key in merged:
-            merged[key] = _merge_two(merged[key], paper)
-        else:
-            merged[key] = paper
+    for papers in paper_lists:
+        for paper in papers:
+            key = _dedup_key(paper)
+            if key is None:
+                no_key.append(paper)
+            elif key in merged:
+                merged[key] = _merge_two(merged[key], paper)
+            else:
+                merged[key] = paper
     all_papers = [*merged.values(), *no_key]
     all_papers.sort(key=lambda p: int(p.get("citation_count") or 0), reverse=True)
     return all_papers
