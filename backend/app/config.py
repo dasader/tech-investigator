@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     semantic_scholar_api_key: str = ""
     elsevier_api_key: str = ""
     openalex_api_key: str = ""
+    kci_api_key: str = ""
     job_timeout_minutes: int = 15
     max_papers_per_indicator: int = 50
     top_results_per_indicator: int = 5
