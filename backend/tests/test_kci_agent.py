@@ -115,3 +115,28 @@ async def test_kci_search_korean_abstract_fallback(monkeypatch):
 
     assert len(results) == 1
     assert results[0]["abstract"].startswith("한국어 초록")
+
+
+MOCK_DETAIL_EMPTY = """<?xml version="1.0" encoding="UTF-8"?>
+<resultList>
+  <outputData>
+    <record>
+      <abstract-group>
+        <abstract language="kor"></abstract>
+        <abstract language="eng"></abstract>
+      </abstract-group>
+    </record>
+  </outputData>
+</resultList>"""
+
+
+@pytest.mark.asyncio
+async def test_kci_search_filters_no_abstract(monkeypatch):
+    monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
+    client = _make_xml_client(search_xml=MOCK_SEARCH_XML, detail_xml=MOCK_DETAIL_EMPTY)
+
+    results = await kci_agent.search_papers_for_indicator(
+        "HBM bandwidth", max_results=5, client=client,
+    )
+
+    assert results == []
