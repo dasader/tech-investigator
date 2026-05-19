@@ -102,11 +102,15 @@ async def extract_metrics_from_paper(
             ],
             ensure_ascii=False,
         )
+
+        def _escape_braces(s: str) -> str:
+            return s.replace("{", "{{").replace("}", "}}")
+
         prompt = BATCH_EXTRACTION_PROMPT.format(
-            category=category,
-            description=description,
-            title=paper.get("title", ""),
-            abstract=paper.get("abstract", ""),
+            category=_escape_braces(category),
+            description=_escape_braces(description),
+            title=_escape_braces(paper.get("title", "")),
+            abstract=_escape_braces(paper.get("abstract", "")),
             indicators_json=indicators_json,
             n=len(indicators),
         )
