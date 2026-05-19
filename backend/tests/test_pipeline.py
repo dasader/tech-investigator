@@ -5,7 +5,7 @@ pytestmark = pytest.mark.no_db
 
 
 def test_source_plan_combined():
-    assert SOURCE_PLAN["combined"] == {"semantic_scholar": 1, "openalex": 10}
+    assert SOURCE_PLAN["combined"] == {"semantic_scholar": 1, "openalex": 10, "kci": 3}
 
 
 def test_source_plan_scopus():

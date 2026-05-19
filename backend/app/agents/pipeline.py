@@ -29,9 +29,10 @@ class PipelineState(TypedDict):
     error: str
 
 # search_source → {하위 소스: 동시성 한도}.
-# 외부 API rate limit 기반: Semantic Scholar ~1 req/s, OpenAlex ~100 req/s, Scopus ~9 req/s.
+# 외부 API rate limit 기반: Semantic Scholar ~1 req/s, OpenAlex ~100 req/s, Scopus ~9 req/s, KCI 보수적.
+# KCI는 indicator당 articleSearch+articleDetail N+1 호출이라 indicator-level 동시성을 3으로 보수 설정.
 SOURCE_PLAN: dict[str, dict[str, int]] = {
-    "combined": {"semantic_scholar": 1, "openalex": 10},
+    "combined": {"semantic_scholar": 1, "openalex": 10, "kci": 3},
     "scopus": {"scopus": 5},
 }
 

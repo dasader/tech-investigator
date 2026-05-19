@@ -86,24 +86,131 @@ async def test_search_all_sources_scopus_dispatches(mock_httpx_client, monkeypat
 @pytest.mark.asyncio
 async def test_search_all_sources_combined_dispatches(monkeypatch):
     captured = {}
-    async def fake_combined(keywords, *, s2_semaphore, openalex_semaphore, client, max_results=None):
+    async def fake_combined(keywords, *, s2_semaphore, openalex_semaphore, kci_semaphore, client, max_results=None):
         captured["s2_sem"] = s2_semaphore
         captured["oa_sem"] = openalex_semaphore
+        captured["kci_sem"] = kci_semaphore
         return [{"title": "merged"}]
     from app.agents import search_agent
     monkeypatch.setattr(search_agent, "search_combined", fake_combined)
-    s2_sem, oa_sem = asyncio.Semaphore(1), asyncio.Semaphore(10)
+    s2_sem, oa_sem, kci_sem = asyncio.Semaphore(1), asyncio.Semaphore(10), asyncio.Semaphore(3)
     results = await search_all_sources(
         "HBM", source="combined",
-        semaphores={"semantic_scholar": s2_sem, "openalex": oa_sem},
+        semaphores={"semantic_scholar": s2_sem, "openalex": oa_sem, "kci": kci_sem},
         client=MagicMock())
 
     assert captured["s2_sem"] is s2_sem
     assert captured["oa_sem"] is oa_sem
+    assert captured["kci_sem"] is kci_sem
     assert results[0]["title"] == "merged"
+
+
+@pytest.mark.asyncio
+async def test_search_all_sources_combined_passes_kci_semaphore(monkeypatch):
+    """combined 호출 시 semaphores dict에 'kci' 키가 있고 search_combined로 전달되는지."""
+    from app.agents import search_agent
+    captured: dict = {}
+
+    async def fake_search_combined(keywords, **kw):
+        captured.update(kw)
+        return []
+
+    monkeypatch.setattr(search_agent, "search_combined", fake_search_combined)
+
+    client = MagicMock()
+    await search_agent.search_all_sources(
+        "HBM",
+        source="combined",
+        max_results=5,
+        semaphores={
+            "semantic_scholar": asyncio.Semaphore(1),
+            "openalex": asyncio.Semaphore(10),
+            "kci": asyncio.Semaphore(3),
+        },
+        client=client,
+    )
+    assert "kci_semaphore" in captured
+    assert isinstance(captured["kci_semaphore"], asyncio.Semaphore)
 
 
 @pytest.mark.asyncio
 async def test_search_all_sources_unknown_raises():
     with pytest.raises(ValueError, match="unknown search_source"):
         await search_all_sources("HBM", source="bogus", semaphores={}, client=MagicMock())
+
+
+def test_merge_papers_3way_dedup_by_doi():
+    from app.agents.search_agent import merge_papers
+    s2 = [{"doi": "10.1/x", "title": "Paper X", "abstract": "short", "citation_count": 5, "country": None}]
+    oa = [{"doi": "10.1/x", "title": "Paper X", "abstract": "much longer abstract content", "citation_count": 8, "country": "USA"}]
+    kci = [
+        {"doi": "10.1/x", "title": "Paper X", "abstract": "", "citation_count": 0, "country": "South Korea", "country_lookup_done": True},
+        {"doi": "10.2/y", "title": "Paper Y", "abstract": "ko-only paper", "citation_count": 2, "country": "South Korea"},
+    ]
+
+    merged = merge_papers(s2, oa, kci)
+
+    by_doi = {p["doi"]: p for p in merged}
+    # 중복 DOI 1건 + KCI-only 1건 = 2건
+    assert len(merged) == 2
+    # OA country가 우선, KCI default가 fallback
+    assert by_doi["10.1/x"]["country"] == "USA"
+    assert by_doi["10.2/y"]["country"] == "South Korea"
+    # 가장 긴 abstract 유지
+    assert by_doi["10.1/x"]["abstract"] == "much longer abstract content"
+    # citation_count는 max
+    assert by_doi["10.1/x"]["citation_count"] == 8
+
+
+@pytest.mark.asyncio
+async def test_search_combined_kci_failure_continues(mock_httpx_client, monkeypatch):
+    from app.agents import search_agent
+    from app.agents import openalex_agent, kci_agent
+
+    async def fake_s2(*a, **kw):
+        return [{"doi": "10.1/a", "title": "A", "abstract": "x", "year": 2024, "citation_count": 3, "paper_id": "S1"}]
+
+    async def fake_oa(*a, **kw):
+        return [{"doi": "10.2/b", "title": "B", "abstract": "y", "year": 2024, "citation_count": 2, "paper_id": "O1", "country": "USA"}]
+
+    async def fake_kci(*a, **kw):
+        raise RuntimeError("KCI down")
+
+    monkeypatch.setattr(search_agent, "search_papers_for_indicator", fake_s2)
+    monkeypatch.setattr(openalex_agent, "search_papers_for_indicator", fake_oa)
+    monkeypatch.setattr(kci_agent, "search_papers_for_indicator", fake_kci)
+
+    client = mock_httpx_client()
+    results = await search_agent.search_combined(
+        "HBM",
+        s2_semaphore=asyncio.Semaphore(1),
+        openalex_semaphore=asyncio.Semaphore(10),
+        kci_semaphore=asyncio.Semaphore(3),
+        client=client,
+    )
+    dois = {p["doi"] for p in results}
+    assert "10.1/a" in dois
+    assert "10.2/b" in dois
+
+
+@pytest.mark.asyncio
+async def test_search_combined_3way_all_fail_raises(mock_httpx_client, monkeypatch):
+    from app.agents import search_agent
+    from app.agents import openalex_agent, kci_agent
+
+    async def boom(*a, **kw):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(search_agent, "search_papers_for_indicator", boom)
+    monkeypatch.setattr(openalex_agent, "search_papers_for_indicator", boom)
+    monkeypatch.setattr(kci_agent, "search_papers_for_indicator", boom)
+
+    client = mock_httpx_client()
+    with pytest.raises(RuntimeError, match="all sources failed"):
+        await search_agent.search_combined(
+            "HBM",
+            s2_semaphore=asyncio.Semaphore(1),
+            openalex_semaphore=asyncio.Semaphore(10),
+            kci_semaphore=asyncio.Semaphore(3),
+            client=client,
+        )

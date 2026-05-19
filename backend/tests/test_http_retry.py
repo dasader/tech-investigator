@@ -2,7 +2,7 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock
 
-from app.agents._http_retry import get_with_retry
+from app.agents._http_retry import get_with_retry, get_text_with_retry
 
 pytestmark = pytest.mark.no_db
 
@@ -92,5 +92,42 @@ async def test_get_with_retry_wraps_request_error(mock_httpx_client):
             "http://example.test/api",
             client=client,
             service_name="TestSvc",
+            context="kw",
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_text_returns_response_text():
+    client = AsyncMock(spec=httpx.AsyncClient)
+    response = MagicMock()
+    response.status_code = 200
+    response.text = "<resultList><record>hello</record></resultList>"
+    response.raise_for_status = MagicMock()
+    client.get.return_value = response
+
+    text = await get_text_with_retry(
+        "https://example.invalid/api",
+        client=client,
+        service_name="TestService",
+        context="kw",
+    )
+    assert text.startswith("<resultList>")
+    assert "hello" in text
+
+
+@pytest.mark.asyncio
+async def test_get_text_raises_runtime_on_http_status_error():
+    client = AsyncMock(spec=httpx.AsyncClient)
+    err = httpx.HTTPStatusError(
+        "500", request=MagicMock(),
+        response=MagicMock(status_code=500),
+    )
+    client.get.side_effect = err
+
+    with pytest.raises(RuntimeError, match="TestService API error 500"):
+        await get_text_with_retry(
+            "https://example.invalid/api",
+            client=client,
+            service_name="TestService",
             context="kw",
         )
