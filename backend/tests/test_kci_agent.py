@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 import httpx
 
 from app.agents import kci_agent
@@ -21,69 +21,85 @@ async def test_kci_search_skips_when_no_api_key(monkeypatch):
     client.get.assert_not_called()
 
 
+# 실제 KCI articleSearch.kci 응답 형식. 핵심 차이점:
+# - 루트는 <MetaData>, articleInfo의 article-id는 element가 아닌 attribute
+# - DOI는 <doi> element (URL prefix 포함)
+# - title/abstract의 언어 속성은 lang="english" / lang="original" / lang="foreign"
+# - journal-name과 pub-year는 <journalInfo> 안에 중첩 (articleInfo의 sibling)
+# - articleSearch 단일 호출로 abstract까지 받음 — articleDetail 호출 불필요
 MOCK_SEARCH_XML = """<?xml version="1.0" encoding="UTF-8"?>
-<resultList>
+<MetaData>
+  <inputData>
+    <key>test-key</key>
+    <apiCode>articleSearch</apiCode>
+    <keyword>HBM bandwidth</keyword>
+  </inputData>
   <outputData>
+    <result><total>1</total></result>
     <record>
-      <article-id pubidtype="kciid">ART001</article-id>
-      <article-id pubidtype="doi">10.1234/foo.2024.001</article-id>
-      <title-group>
-        <article-title language="kor">한국어 제목</article-title>
-        <article-title language="eng">High Bandwidth Memory Stack Yield</article-title>
-      </title-group>
-      <pub-year>2024</pub-year>
-      <journal-name language="eng">Journal of Korean Semiconductor</journal-name>
-      <journal-name language="kor">한국반도체학회지</journal-name>
-      <citation-count>17</citation-count>
+      <journalInfo>
+        <journal-name>Journal of Korean Semiconductor</journal-name>
+        <publisher-name>Korean Semiconductor Society</publisher-name>
+        <pub-year>2024</pub-year>
+        <volume>15</volume>
+      </journalInfo>
+      <articleInfo article-id="ART003194268">
+        <article-categories>전자공학</article-categories>
+        <title-group>
+          <article-title lang="original"><![CDATA[HBM 스택 수율 개선]]></article-title>
+          <article-title lang="english"><![CDATA[High Bandwidth Memory Stack Yield]]></article-title>
+        </title-group>
+        <abstract-group>
+          <abstract lang="original"><![CDATA[한국어 초록 내용]]></abstract>
+          <abstract lang="english"><![CDATA[We report HBM3E stacking achieving 1.2 TB/s bandwidth.]]></abstract>
+        </abstract-group>
+        <doi><![CDATA[http://dx.doi.org/10.6117/kmeps.2024.15.1.013]]></doi>
+        <citation-count kci="17" wos="3">17</citation-count>
+      </articleInfo>
     </record>
   </outputData>
-</resultList>"""
-
-MOCK_DETAIL_XML = """<?xml version="1.0" encoding="UTF-8"?>
-<resultList>
-  <outputData>
-    <record>
-      <abstract-group>
-        <abstract language="kor">한국어 초록 내용 1.2 마이크로미터.</abstract>
-        <abstract language="eng">We report HBM3E stacking achieving 1.2 TB/s bandwidth.</abstract>
-      </abstract-group>
-    </record>
-  </outputData>
-</resultList>"""
+</MetaData>"""
 
 
-def _make_xml_client(*, search_xml: str, detail_xml: str):
-    """KCI 호출을 구분 — apiCode 파라미터로 search/detail mock 응답을 분기."""
-    from unittest.mock import AsyncMock, MagicMock
+def _make_kci_client(xml_text: str):
+    """KCI 호출 1회 mock — articleSearch만 사용 (articleDetail 폐기)."""
     client = AsyncMock(spec=httpx.AsyncClient)
+    captured_params: dict = {}
 
     async def fake_get(url, params=None, headers=None, timeout=None):
-        api_code = (params or {}).get("apiCode")
+        captured_params.update(params or {})
         response = MagicMock()
         response.status_code = 200
         response.raise_for_status = MagicMock()
-        response.text = detail_xml if api_code == "articleDetail" else search_xml
+        response.text = xml_text
         return response
 
     client.get.side_effect = fake_get
+    client.captured_params = captured_params  # 테스트에서 검증용
     return client
 
 
 @pytest.mark.asyncio
 async def test_kci_search_returns_papers(monkeypatch):
     monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
-    client = _make_xml_client(search_xml=MOCK_SEARCH_XML, detail_xml=MOCK_DETAIL_XML)
+    client = _make_kci_client(MOCK_SEARCH_XML)
 
     results = await kci_agent.search_papers_for_indicator(
         "HBM bandwidth", max_results=5, client=client,
     )
 
+    # 요청 파라미터 검증 — 실제 KCI는 "keyword" param 사용 (searchQuery는 무시됨).
+    assert client.captured_params.get("keyword") == "HBM bandwidth"
+    assert client.captured_params.get("apiCode") == "articleSearch"
+    assert client.captured_params.get("key") == "test-key"
+
     assert len(results) == 1
     paper = results[0]
-    assert paper["paper_id"] == "ART001"
-    assert paper["doi"] == "10.1234/foo.2024.001"
-    assert paper["title"] == "High Bandwidth Memory Stack Yield"  # 영문 우선
-    assert paper["abstract"].startswith("We report HBM3E")  # 영문 우선
+    assert paper["paper_id"] == "ART003194268"
+    # DOI URL prefix가 stripping되어 bare DOI 형식
+    assert paper["doi"] == "10.6117/kmeps.2024.15.1.013"
+    assert paper["title"] == "High Bandwidth Memory Stack Yield"  # english 우선
+    assert paper["abstract"].startswith("We report HBM3E")  # english 우선
     assert paper["year"] == 2024
     assert paper["citation_count"] == 17
     assert paper["journal_name"] == "Journal of Korean Semiconductor"
@@ -91,23 +107,33 @@ async def test_kci_search_returns_papers(monkeypatch):
     assert paper["country_lookup_done"] is True
 
 
-MOCK_DETAIL_KO_ONLY = """<?xml version="1.0" encoding="UTF-8"?>
-<resultList>
+MOCK_SEARCH_XML_KO_ONLY = """<?xml version="1.0" encoding="UTF-8"?>
+<MetaData>
   <outputData>
     <record>
-      <abstract-group>
-        <abstract language="kor">한국어 초록입니다. 대역폭 1.2 TB/s를 달성하였다.</abstract>
-        <abstract language="eng"></abstract>
-      </abstract-group>
+      <journalInfo>
+        <journal-name>한국반도체학회지</journal-name>
+        <pub-year>2024</pub-year>
+      </journalInfo>
+      <articleInfo article-id="ART002">
+        <title-group>
+          <article-title lang="original"><![CDATA[한국어 전용 논문]]></article-title>
+        </title-group>
+        <abstract-group>
+          <abstract lang="original"><![CDATA[한국어 초록입니다. 대역폭 1.2 TB/s를 달성하였다.]]></abstract>
+        </abstract-group>
+        <citation-count kci="3" wos="0">3</citation-count>
+      </articleInfo>
     </record>
   </outputData>
-</resultList>"""
+</MetaData>"""
 
 
 @pytest.mark.asyncio
 async def test_kci_search_korean_abstract_fallback(monkeypatch):
+    """영문 abstract 부재 → 한글 abstract (lang="original")로 fallback."""
     monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
-    client = _make_xml_client(search_xml=MOCK_SEARCH_XML, detail_xml=MOCK_DETAIL_KO_ONLY)
+    client = _make_kci_client(MOCK_SEARCH_XML_KO_ONLY)
 
     results = await kci_agent.search_papers_for_indicator(
         "HBM bandwidth", max_results=5, client=client,
@@ -115,25 +141,32 @@ async def test_kci_search_korean_abstract_fallback(monkeypatch):
 
     assert len(results) == 1
     assert results[0]["abstract"].startswith("한국어 초록")
+    # title도 동일 fallback
+    assert results[0]["title"] == "한국어 전용 논문"
 
 
-MOCK_DETAIL_EMPTY = """<?xml version="1.0" encoding="UTF-8"?>
-<resultList>
+MOCK_SEARCH_XML_EMPTY_ABSTRACTS = """<?xml version="1.0" encoding="UTF-8"?>
+<MetaData>
   <outputData>
     <record>
-      <abstract-group>
-        <abstract language="kor"></abstract>
-        <abstract language="eng"></abstract>
-      </abstract-group>
+      <journalInfo><pub-year>2024</pub-year></journalInfo>
+      <articleInfo article-id="ART003">
+        <title-group><article-title lang="english">Title Only</article-title></title-group>
+        <abstract-group>
+          <abstract lang="original"></abstract>
+          <abstract lang="english"></abstract>
+        </abstract-group>
+      </articleInfo>
     </record>
   </outputData>
-</resultList>"""
+</MetaData>"""
 
 
 @pytest.mark.asyncio
 async def test_kci_search_filters_no_abstract(monkeypatch):
+    """한/영 abstract 모두 비어있는 paper는 drop (Gemini 추출 불가)."""
     monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
-    client = _make_xml_client(search_xml=MOCK_SEARCH_XML, detail_xml=MOCK_DETAIL_EMPTY)
+    client = _make_kci_client(MOCK_SEARCH_XML_EMPTY_ABSTRACTS)
 
     results = await kci_agent.search_papers_for_indicator(
         "HBM bandwidth", max_results=5, client=client,
@@ -142,53 +175,53 @@ async def test_kci_search_filters_no_abstract(monkeypatch):
     assert results == []
 
 
-MOCK_SEARCH_XML_2RECORDS = """<?xml version="1.0" encoding="UTF-8"?>
-<resultList>
+MOCK_SEARCH_XML_MIXED_RECORDS = """<?xml version="1.0" encoding="UTF-8"?>
+<MetaData>
   <outputData>
     <record>
-      <article-id pubidtype="kciid">ART001</article-id>
-      <article-id pubidtype="doi">10.1234/foo.2024.001</article-id>
-      <title-group><article-title language="eng">Paper One</article-title></title-group>
-      <pub-year>2024</pub-year><citation-count>10</citation-count>
+      <journalInfo><pub-year>2024</pub-year></journalInfo>
+      <articleInfo article-id="ART100">
+        <title-group><article-title lang="english">Good Paper</article-title></title-group>
+        <abstract-group><abstract lang="english">Valid abstract.</abstract></abstract-group>
+      </articleInfo>
     </record>
     <record>
-      <article-id pubidtype="kciid">ART002</article-id>
-      <title-group><article-title language="eng">Paper Two</article-title></title-group>
-      <pub-year>2024</pub-year><citation-count>5</citation-count>
+      <journalInfo><pub-year>2024</pub-year></journalInfo>
+      <articleInfo>
+        <title-group><article-title lang="english">Missing ID</article-title></title-group>
+        <abstract-group><abstract lang="english">Has abstract but no article-id.</abstract></abstract-group>
+      </articleInfo>
     </record>
   </outputData>
-</resultList>"""
+</MetaData>"""
 
 
 @pytest.mark.asyncio
-async def test_kci_detail_partial_failure(monkeypatch, caplog):
-    from unittest.mock import MagicMock
+async def test_kci_search_skips_records_without_article_id(monkeypatch):
+    """article-id 속성 없는 record는 skip — 식별 불가."""
     monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
-    client = AsyncMock(spec=httpx.AsyncClient)
+    client = _make_kci_client(MOCK_SEARCH_XML_MIXED_RECORDS)
 
-    async def fake_get(url, params=None, headers=None, timeout=None):
-        api_code = (params or {}).get("apiCode")
-        response = MagicMock()
-        response.raise_for_status = MagicMock()
-        if api_code == "articleSearch":
-            response.status_code = 200
-            response.text = MOCK_SEARCH_XML_2RECORDS
-            return response
-        # articleDetail: ART001 성공, ART002 실패(500)
-        if (params or {}).get("id") == "ART001":
-            response.status_code = 200
-            response.text = MOCK_DETAIL_XML
-            return response
-        err_response = MagicMock(status_code=500)
-        raise httpx.HTTPStatusError("500", request=MagicMock(), response=err_response)
-
-    client.get.side_effect = fake_get
-
-    with caplog.at_level("WARNING", logger="app.agents.kci_agent"):
-        results = await kci_agent.search_papers_for_indicator(
-            "HBM bandwidth", max_results=5, client=client,
-        )
+    results = await kci_agent.search_papers_for_indicator(
+        "HBM bandwidth", max_results=5, client=client,
+    )
 
     assert len(results) == 1
-    assert results[0]["paper_id"] == "ART001"
-    assert any("articleDetail failed" in r.message for r in caplog.records)
+    assert results[0]["paper_id"] == "ART100"
+
+
+@pytest.mark.asyncio
+async def test_kci_search_raises_on_http_error(monkeypatch):
+    """KCI 호출 자체 실패(500 등) → RuntimeError. search_combined에서 graceful degrade."""
+    monkeypatch.setattr("app.agents.kci_agent.settings.kci_api_key", "test-key")
+    client = AsyncMock(spec=httpx.AsyncClient)
+    err = httpx.HTTPStatusError(
+        "500", request=MagicMock(),
+        response=MagicMock(status_code=500),
+    )
+    client.get.side_effect = err
+
+    with pytest.raises(RuntimeError, match="KCI"):
+        await kci_agent.search_papers_for_indicator(
+            "HBM bandwidth", max_results=5, client=client,
+        )

@@ -2,9 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented + revised after real-API verification.
+
+## Post-implementation revision (2026-05-19)
+
+머지 후 실제 KCI API로 검증한 결과, 가정했던 XML 스키마와 articleDetail 2단 호출 설계가 실제와 달라 정정함:
+
+- **articleDetail 폐기** — 실제 articleSearch 응답에 abstract(한/영) + DOI가 이미 포함되어 detail 호출 불필요. Task 4 단순화, **Task 7 삭제** (partial detail failure는 더 이상 발생 불가능한 시나리오).
+- **XML/파라미터 정정** — `keyword` 파라미터(원래 `searchQuery`), 루트 `<MetaData>`, `<articleInfo article-id="...">` 속성, `<title-group><article-title lang="english">`, `<abstract-group><abstract lang="...">`, `<journalInfo><pub-year>`/`<journal-name>`, `<doi>http://dx.doi.org/...</doi>`. Task 4의 mock XML과 파싱 헬퍼가 정정됨.
+- **신규 테스트** — `test_kci_search_skips_records_without_article_id`, `test_kci_search_raises_on_http_error` 추가. `test_kci_detail_partial_failure` 제거.
+
+자세한 사항은 spec §4.4 참조.
+
 **Goal:** `combined` 검색 모드의 세 번째 소스로 KCI(한국학술지 인용색인) Open API를 추가해 한국 연구 커버리지를 보강한다.
 
-**Architecture:** `kci_agent.py` 신규 모듈이 articleSearch.kci → articleDetail.kci N+1 호출을 캡슐화하여 S2/OpenAlex와 동일한 시그니처를 제공한다. `search_combined`을 3-way `asyncio.gather`로 확장하고 `merge_papers`를 `*paper_lists` 가변 인자로 일반화한다. KCI key 미설정 시 빈 리스트를 즉시 반환해 기존 환경 호환성 유지.
+**Architecture:** `kci_agent.py` 신규 모듈이 articleSearch.kci 단일 호출(post-revision)을 캡슐화하여 S2/OpenAlex와 동일한 시그니처를 제공한다. `search_combined`을 3-way `asyncio.gather`로 확장하고 `merge_papers`를 `*paper_lists` 가변 인자로 일반화한다. KCI key 미설정 시 빈 리스트를 즉시 반환해 기존 환경 호환성 유지.
 
 **Tech Stack:** Python 3.12 / FastAPI / httpx / xml.etree.ElementTree (stdlib) / pytest-asyncio.
 

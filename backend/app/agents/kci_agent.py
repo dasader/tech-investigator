@@ -10,105 +10,141 @@ logger = logging.getLogger(__name__)
 
 KCI_API_URL = "https://open.kci.go.kr/po/openapi/openApiSearch.kci"
 
-# articleDetail.kci N+1 호출 throttle (process-wide, indicator 외 동시성과 별도).
-_DETAIL_SEM = asyncio.Semaphore(5)
+_DOI_URL_PREFIXES = (
+    "http://dx.doi.org/", "https://dx.doi.org/",
+    "http://doi.org/", "https://doi.org/",
+    "doi.org/", "dx.doi.org/",
+)
 
 
-def _pick_by_lang(records: list[ET.Element], preferred: str = "eng") -> str:
-    """`<element language="eng">` 우선, 없으면 첫 번째 비어있지 않은 텍스트, 둘 다 없으면 빈 문자열."""
+def _pick_by_lang(elements: list[ET.Element], preferred: str = "english") -> str:
+    """`lang="<preferred>"` 우선, 없으면 첫 번째 비어있지 않은 텍스트, 둘 다 없으면 빈 문자열.
+
+    KCI는 lang 값으로 "english", "original"(보통 한국어), "foreign"을 사용한다.
+    """
     fallback = ""
-    for r in records:
-        text = (r.text or "").strip()
+    for el in elements:
+        text = (el.text or "").strip()
         if not text:
             continue
-        if r.get("language") == preferred:
+        if el.get("lang") == preferred:
             return text
         if not fallback:
             fallback = text
     return fallback
 
 
-def _find_doi(record: ET.Element) -> str | None:
-    for aid in record.findall("article-id"):
-        if aid.get("pubidtype") != "doi":
-            continue
-        raw = aid.text
-        if not raw:
-            continue
-        text = raw.strip()
-        if text:
-            return text
-    return None
+def _strip_doi_prefix(doi: str | None) -> str | None:
+    """KCI는 DOI를 'http://dx.doi.org/10.xxx/yyy' 형식 URL로 반환 → bare DOI로 정규화."""
+    if not doi:
+        return None
+    s = doi.strip()
+    if not s:
+        return None
+    for prefix in _DOI_URL_PREFIXES:
+        if s.startswith(prefix):
+            return s[len(prefix):]
+    return s
 
 
-def _find_kci_id(record: ET.Element) -> str | None:
-    for aid in record.findall("article-id"):
-        if aid.get("pubidtype") != "kciid":
-            continue
-        raw = aid.text
-        if not raw:
-            continue
-        text = raw.strip()
-        if text:
-            return text
-    return None
+def _find_doi(article_info: ET.Element) -> str | None:
+    doi_el = article_info.find("doi")
+    if doi_el is None:
+        return None
+    return _strip_doi_prefix(doi_el.text)
+
+
+def _int_or(text: str | None, default: int | None) -> int | None:
+    if not text:
+        return default
+    try:
+        return int(text.strip())
+    except ValueError:
+        return default
+
+
+def _text_or_none(el: ET.Element | None) -> str | None:
+    if el is None or el.text is None:
+        return None
+    stripped = el.text.strip()
+    return stripped or None
 
 
 def _parse_search_xml(xml_text: str) -> list[dict]:
-    """articleSearch.kci XML → 메타데이터 dict 목록 (abstract 제외)."""
+    """KCI articleSearch.kci XML → paper dict 목록.
+
+    실제 응답 구조:
+        <MetaData>
+          <outputData>
+            <record>
+              <journalInfo>
+                <journal-name>...</journal-name>
+                <pub-year>2024</pub-year>
+              </journalInfo>
+              <articleInfo article-id="ART...">
+                <title-group>
+                  <article-title lang="original">...</article-title>
+                  <article-title lang="english">...</article-title>
+                </title-group>
+                <abstract-group>
+                  <abstract lang="original">...</abstract>
+                  <abstract lang="english">...</abstract>
+                </abstract-group>
+                <doi>http://dx.doi.org/...</doi>
+                <citation-count kci="N" wos="M">N</citation-count>
+              </articleInfo>
+            </record>
+            ...
+    """
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as e:
         raise RuntimeError(f"KCI articleSearch XML parse error: {e}") from e
 
-    metas: list[dict] = []
+    papers: list[dict] = []
     for record in root.iter("record"):
-        kci_id = _find_kci_id(record)
-        if not kci_id:
+        article = record.find("articleInfo")
+        if article is None:
             continue
-        title_group = record.find("title-group")
-        titles = list(title_group.findall("article-title")) if title_group is not None else []
-        journals = list(record.findall("journal-name"))
-        year_el = record.find("pub-year")
-        citation_el = record.find("citation-count")
-        try:
-            year = int((year_el.text or "").strip()) if year_el is not None and year_el.text else None
-        except ValueError:
-            year = None
-        try:
-            citation_count = int((citation_el.text or "").strip()) if citation_el is not None and citation_el.text else 0
-        except ValueError:
-            citation_count = 0
+        article_id = article.get("article-id")
+        if not article_id:
+            continue
 
-        metas.append({
-            "paper_id": kci_id,
-            "title": _pick_by_lang(titles, "eng"),
+        titles = list(article.findall("title-group/article-title"))
+        abstracts = list(article.findall("abstract-group/abstract"))
+
+        journal_info = record.find("journalInfo")
+        if journal_info is not None:
+            journal_name = _text_or_none(journal_info.find("journal-name"))
+            pub_year_el = journal_info.find("pub-year")
+            year = _int_or(pub_year_el.text if pub_year_el is not None else None, None)
+        else:
+            journal_name = None
+            year = None
+
+        citation_el = article.find("citation-count")
+        citation_count = _int_or(citation_el.text if citation_el is not None else None, 0) or 0
+
+        papers.append({
+            "paper_id": article_id,
+            "title": _pick_by_lang(titles, "english"),
+            "abstract": _pick_by_lang(abstracts, "english"),
             "year": year,
             "citation_count": citation_count,
-            "doi": _find_doi(record),
-            "journal_name": _pick_by_lang(journals, "eng") or None,
+            "doi": _find_doi(article),
+            "journal_name": journal_name,
         })
-    return metas
-
-
-def _parse_detail_xml(xml_text: str) -> dict:
-    """articleDetail.kci XML → {'abstract': '...'} (영문 우선, 한글 fallback)."""
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError as e:
-        raise RuntimeError(f"KCI articleDetail XML parse error: {e}") from e
-
-    abstracts: list[ET.Element] = list(root.iter("abstract"))
-    return {"abstract": _pick_by_lang(abstracts, "eng")}
+    return papers
 
 
 async def _fetch_search(
     keywords: str, max_results: int, *, client: httpx.AsyncClient,
 ) -> list[dict]:
+    """단일 articleSearch.kci 호출 — 응답에 메타데이터·DOI·abstract 모두 포함."""
     params = {
         "apiCode": "articleSearch",
         "key": settings.kci_api_key,
-        "searchQuery": keywords,
+        "keyword": keywords,
         "displayCount": min(max_results, 100),
         "page": 1,
     }
@@ -123,31 +159,6 @@ async def _fetch_search(
     return _parse_search_xml(xml_text)
 
 
-async def _fetch_detail_throttled(
-    kci_id: str, *, client: httpx.AsyncClient,
-) -> dict | None:
-    """detail 호출은 _DETAIL_SEM으로 throttle. 실패하면 None 반환(상위에서 drop)."""
-    async with _DETAIL_SEM:
-        try:
-            params = {
-                "apiCode": "articleDetail",
-                "key": settings.kci_api_key,
-                "id": kci_id,
-            }
-            xml_text = await get_text_with_retry(
-                KCI_API_URL,
-                client=client,
-                params=params,
-                service_name="KCI",
-                context=f"detail:{kci_id}",
-                inter_attempt_sleep=0.2,
-            )
-            return _parse_detail_xml(xml_text)
-        except Exception as e:
-            logger.warning("KCI articleDetail failed for %s: %s", kci_id, e)
-            return None
-
-
 async def search_papers_for_indicator(
     keywords: str,
     max_results: int | None = None,
@@ -155,41 +166,34 @@ async def search_papers_for_indicator(
     *,
     client: httpx.AsyncClient,
 ) -> list[dict]:
+    """KCI Open API로 keyword 검색해 paper dict 리스트 반환.
+
+    `settings.kci_api_key`가 비어있으면 즉시 빈 리스트 (graceful no-op).
+    abstract(한/영 어느 쪽이든)가 비어있는 paper는 drop.
+    country는 항상 "South Korea"로 set, country_lookup_done=True로 extraction_agent의
+    OpenAlex 재조회를 차단.
+    """
     if not settings.kci_api_key:
         return []
 
-    from app.config import settings as _s  # late import for monkeypatch in tests
-    max_results = max_results if max_results is not None else _s.max_papers_per_indicator
+    max_results = max_results if max_results is not None else settings.max_papers_per_indicator
 
     sem = semaphore or asyncio.Semaphore(1)
     async with sem:
-        metas = await _fetch_search(keywords, max_results, client=client)
-
-    if not metas:
-        logger.info("[KCI] keywords=%r returned=0", keywords)
-        return []
-
-    details = await asyncio.gather(
-        *[_fetch_detail_throttled(m["paper_id"], client=client) for m in metas],
-        return_exceptions=False,
-    )
+        raw = await _fetch_search(keywords, max_results, client=client)
 
     papers: list[dict] = []
-    for meta, detail in zip(metas, details):
-        if detail is None:
-            continue
-        abstract = detail.get("abstract") or ""
-        if not abstract:
+    for meta in raw:
+        if not meta.get("abstract"):
             continue
         papers.append({
             **meta,
-            "abstract": abstract,
             "country": "South Korea",
             "country_lookup_done": True,
         })
 
     logger.info(
-        "[KCI] keywords=%r returned=%d after_detail_fetch=%d after_abstract_filter=%d",
-        keywords, len(metas), sum(1 for d in details if d is not None), len(papers),
+        "[KCI] keywords=%r returned=%d after_abstract_filter=%d",
+        keywords, len(raw), len(papers),
     )
     return papers

@@ -1,8 +1,17 @@
 # KCI Open API 통합 설계
 
 **Date:** 2026-05-19
-**Status:** Approved (brainstorming)
+**Status:** Implemented + revised after real API verification (2026-05-19)
 **Scope:** `combined` 검색 모드에 KCI(한국학술지 인용색인) Open API를 자동 병합. `scopus` 모드는 변경하지 않는다.
+
+## Revision (post-implementation, 2026-05-19)
+
+머지 후 실제 KCI API로 검증한 결과 두 가지 큰 차이가 발견되어 구현과 본 spec을 정정함:
+
+1. **articleDetail 2단 호출 폐기** — 실제 `articleSearch.kci` 응답에 abstract(한/영) + DOI가 **이미 포함**되어 있다. 별도 detail 호출은 불필요. 결과: `_fetch_detail_throttled` / `_DETAIL_SEM` / `_parse_detail_xml` 제거, HTTP 호출량이 지표당 N+1 → 1로 감소.
+2. **XML/파라미터 명세 정정** — 가정했던 element/속성 이름이 실제와 달랐다 (`searchQuery` → `keyword`, `<article-id pubidtype="kciid">` → `<articleInfo article-id="...">`, `language="eng"` → `lang="english"`, DOI는 `<doi>` element에 URL prefix 포함 등). 본문의 §3, §4, §7, §10, §11 모두 정정 반영함.
+
+원본 brainstorming 결정(§2)과 거시 아키텍처(§3 high level)는 유지. 변경 영향은 `kci_agent.py` 내부 캡슐화에 국한되어 `search_combined`, `merge_papers`, downstream(extract/validate/synthesize) 등 외부 인터페이스는 영향 없음.
 
 ## 1. 배경과 목표
 
@@ -37,13 +46,12 @@ search_node (pipeline.py)
             ├─ search_papers_for_indicator (S2)
             ├─ openalex_agent.search_papers_for_indicator
             └─ kci_agent.search_papers_for_indicator  ← 신규
-                  ├─ articleSearch.kci   (메타데이터 + articleId 목록)
-                  └─ articleDetail.kci × N (abstract 보강)
+                  └─ articleSearch.kci  (단일 호출 — 메타데이터·DOI·abstract 모두 포함)
        └─ merge_papers  ← *paper_lists 가변 인자로 일반화
 ```
 
 핵심 원칙:
-- `kci_agent`의 공개 함수는 S2/OpenAlex와 **동일한 시그니처**(`keywords, max_results, semaphore, *, client` → `list[paper_dict]`). 호출자는 KCI 내부 N+1 호출을 의식하지 않는다.
+- `kci_agent`의 공개 함수는 S2/OpenAlex와 **동일한 시그니처**(`keywords, max_results, semaphore, *, client` → `list[paper_dict]`). 호출자는 KCI 내부를 의식하지 않는다.
 - `asyncio.gather(..., return_exceptions=True)`로 3-way 부분 실패에 그레이스풀 다운. 셋 다 실패 시에만 `RuntimeError`.
 - KCI key 미설정(`settings.kci_api_key == ""`) 시 `kci_agent`는 즉시 빈 리스트 반환(예외 없이). 기존 `.env`에 KCI 키 없는 환경도 깨지지 않는다.
 
@@ -66,9 +74,8 @@ S2/OpenAlex agent와 시그니처 호환.
 ### 4.2 내부 흐름
 
 1. **빈 키 가드** — `if not settings.kci_api_key: return []`.
-2. **articleSearch.kci 호출** — `searchQuery=keywords`, `displayCount=min(max_results, 100)`. 외부 `semaphore`로 indicator 간 동시성 제한. 응답 XML에서 `articleId`, `title (ko/eng)`, `year`, `doi`, `journalName (ko/eng)`, `citationCount`를 추출.
-3. **articleDetail.kci × N** — articleId별 abstract(한/영) 보강. 모듈 내부 `_DETAIL_SEM = asyncio.Semaphore(5)`로 detail 호출 throttling. 개별 detail 실패는 warning 로깅 후 해당 paper drop (전체 실패로 처리하지 않음).
-4. **정규화** — paper dict 변환:
+2. **articleSearch.kci 단일 호출** — 파라미터: `apiCode=articleSearch`, `key=<API key>`, **`keyword=<영문 키워드>`**, `displayCount=min(max_results, 100)`, `page=1`. 외부 `semaphore`로 indicator 간 동시성 제한. 응답에 메타데이터·DOI·abstract(한/영)가 모두 포함되어 추가 detail 호출 불필요.
+3. **정규화** — paper dict 변환:
    ```python
    {
      "paper_id": article_id,
@@ -82,23 +89,51 @@ S2/OpenAlex agent와 시그니처 호환.
      "country_lookup_done": True,
    }
    ```
-5. **abstract 필터** — 한/영 모두 비어 있으면 drop.
-6. **로깅** — `[KCI] keywords=%r returned=%d after_detail_fetch=%d after_abstract_filter=%d`.
+4. **abstract 필터** — 한/영 모두 비어 있으면 drop. article-id 속성 없는 record도 drop.
+5. **로깅** — `[KCI] keywords=%r returned=%d after_abstract_filter=%d`.
 
 ### 4.3 HTTP / XML 처리
 
-- HTTP 재시도: 기존 `app.agents._http_retry.get_with_retry`를 articleSearch와 articleDetail 양쪽에 재사용.
+- HTTP 재시도: 기존 `app.agents._http_retry.get_text_with_retry` 재사용.
 - `inter_attempt_sleep=0.2`로 KCI 일일 호출량 보호.
 - XML 파싱: `xml.etree.ElementTree` (stdlib). 새 의존성 없음.
 - XML `ParseError`는 `RuntimeError`로 변환해 재시도 흐름과 일관성 유지(예: KCI가 일시적으로 HTML 오류 페이지를 반환할 때).
 
-### 4.4 구현 시 확정 사항
+### 4.4 실제 응답 구조 (post-implementation verified)
 
-다음 항목은 사용자가 발급받은 KCI API 문서로 구현 시 확정한다. 외부 인터페이스가 동일하므로 설계 영향은 없다.
+실제 KCI XML(`open.kci.go.kr/po/openapi/openApiSearch.kci`):
 
-- 정확한 base URL과 `apiCode` 명칭 (예: `articleSearch` vs `openApiSearch`).
-- 응답 XML element 이름 (`<articleId>`, `<title language="kor">` 등).
-- 인증 방식 (query param `key` vs 헤더).
+```xml
+<MetaData>
+  <inputData>...</inputData>
+  <outputData>
+    <result><total>N</total></result>
+    <record>
+      <journalInfo>
+        <journal-name>...</journal-name>
+        <pub-year>2025</pub-year>
+      </journalInfo>
+      <articleInfo article-id="ART003194268">
+        <title-group>
+          <article-title lang="original">한글 제목</article-title>
+          <article-title lang="english">English Title</article-title>
+        </title-group>
+        <abstract-group>
+          <abstract lang="original">한글 초록</abstract>
+          <abstract lang="english">English abstract</abstract>
+        </abstract-group>
+        <doi>http://dx.doi.org/10.6117/...</doi>
+        <citation-count kci="4" wos="0">4</citation-count>
+      </articleInfo>
+    </record>
+    ...
+```
+
+- `article-id`는 `<articleInfo>` element의 **속성**.
+- DOI는 `<doi>` element에 URL prefix 포함 → `_strip_doi_prefix`로 정규화.
+- `lang` 값은 `"english"` / `"original"` / `"foreign"`. `_pick_by_lang(preferred="english")` 우선, fallback은 첫 truthy(보통 `"original"` 한국어).
+- `<journalInfo>`는 `<articleInfo>`의 sibling — `<record>` 안에서 같이 iterate 필요.
+- `citation-count`는 `kci` 속성에 KCI 자체 인용수, `wos`에 WoS 인용수. text content는 KCI 값과 동일. text를 사용.
 
 ## 5. `merge_papers` 일반화 (`backend/app/agents/search_agent.py`)
 
@@ -171,7 +206,7 @@ SOURCE_PLAN: dict[str, dict[str, int]] = {
 }
 ```
 
-`"kci": 3` 근거 — KCI는 indicator 1개당 articleSearch×1 + articleDetail×N 호출이라 가장 무거운 소스. 지표 3개까지만 병렬화하여 KCI 일일 호출량을 보호한다. 모듈 내부 `_DETAIL_SEM=5`와 곱하면 약 15 detail/sec가 상한.
+`"kci": 3` 근거 — articleDetail 호출 제거 이후 KCI는 indicator당 단일 articleSearch 호출만 한다. 그래도 KCI Open API 일일 호출 한도(공식 명시 없음, 보수 가정)를 보호하기 위해 3으로 유지. OpenAlex(10)보다 보수, S2(1)보다 공격적인 중간값. 실사용 모니터링 후 상향 조정 여지 있음.
 
 ## 8. 설정 변경
 
@@ -220,18 +255,19 @@ abstract와 같은 언어 매칭이 자연스러움. `en_title` 우선 → 없�
 - **3-way 부분 실패**: 1~2개 소스가 raise → warning 로깅 후 나머지 소스만으로 merge. 셋 다 실패 시 `RuntimeError`(기존 `combined`와 동일 정책).
 - **KCI key 미설정**: `kci_agent`가 빈 리스트 즉시 반환. S2+OA 결과만으로 정상 동작.
 - **articleSearch.kci 실패**: KCI 전체 실패로 처리 → `search_combined`에서 graceful degrade.
-- **articleDetail.kci 일부 실패**: 해당 paper만 drop, warning 로깅. 나머지 paper는 정상 반환.
 - **XML ParseError**: `RuntimeError`로 변환.
+- **article-id 누락 record**: 해당 record만 skip, 나머지는 정상 반환.
 
 ## 11. 테스트
 
 ### 11.1 신규 — `backend/tests/test_kci_agent.py`
 
-1. `test_kci_search_returns_papers` — 정상 articleSearch + articleDetail mock 응답. paper dict 정규화 검증 (title/abstract 영문 우선, country="South Korea", country_lookup_done=True).
-2. `test_kci_search_korean_abstract_fallback` — 영문 abstract 빈 응답 → 한글 abstract로 fallback.
-3. `test_kci_search_filters_no_abstract` — 한/영 모두 빈 abstract는 drop.
-4. `test_kci_search_skips_when_no_api_key` — `settings.kci_api_key=""` → 빈 리스트 즉시 반환, HTTP 호출 0건.
-5. `test_kci_detail_partial_failure` — articleSearch 5건 성공, articleDetail 중 2건 500 → 3건만 반환, warning 로깅.
+1. `test_kci_search_skips_when_no_api_key` — `settings.kci_api_key=""` → 빈 리스트 즉시 반환, HTTP 호출 0건.
+2. `test_kci_search_returns_papers` — 정상 articleSearch 응답. paper dict 정규화 검증 (title/abstract 영문 우선, DOI URL prefix strip, country="South Korea", country_lookup_done=True). 요청 파라미터(`keyword`, `apiCode`, `key`)도 검증.
+3. `test_kci_search_korean_abstract_fallback` — 영문 abstract 부재 → `lang="original"` 한글 abstract로 fallback.
+4. `test_kci_search_filters_no_abstract` — 한/영 모두 빈 abstract는 drop.
+5. `test_kci_search_skips_records_without_article_id` — `articleInfo` 속성 누락 record는 skip.
+6. `test_kci_search_raises_on_http_error` — KCI 호출 500 → RuntimeError. (Task 9의 search_combined graceful degrade가 이를 잡아 처리.)
 
 ### 11.2 갱신 — `backend/tests/test_search_agent.py`
 
@@ -289,14 +325,16 @@ abstract와 같은 언어 매칭이 자연스러움. `en_title` 우선 → 없�
 | Engine label | `backend/app/utils.py` | combined 라벨에 "+ KCI" 추가 |
 | .env | `.env.example`, `backend/.env.example` | `KCI_API_KEY=` 1줄 |
 | Frontend | `frontend/src/pages/InputPage.tsx` | combined 라벨 텍스트 |
-| 테스트 신규 | `backend/tests/test_kci_agent.py` | 5개 |
-| 테스트 갱신 | `test_search_agent.py`, `test_utils.py` | 3+1개 |
+| 테스트 신규 | `backend/tests/test_kci_agent.py` | 6개 (post-revision: detail 테스트 제거, http error 테스트 추가) |
+| 테스트 갱신 | `test_search_agent.py`, `test_utils.py`, `test_combined_search.py`, `test_pipeline.py` | 다수 |
 | CLAUDE.md | 루트 | combined 설명 갱신 |
 
 **DB/schema/API 응답 형식 변경 없음.**
 
-## 16. 가정과 미해결 사항
+## 16. 가정과 미해결 사항 (resolved after real-API verification)
 
-- KCI Open API 엔드포인트의 정확한 URL과 응답 XML 구조는 사용자가 발급받은 문서로 구현 시 확정. 본 spec의 외부 인터페이스 설계는 영향받지 않음.
-- KCI 일일 호출 한도가 매우 낮은 경우 `SOURCE_PLAN["combined"]["kci"]`와 `_DETAIL_SEM` 값을 사후 튜닝.
+- ~~KCI Open API 엔드포인트의 정확한 URL과 응답 XML 구조는 사용자가 발급받은 문서로 구현 시 확정.~~ → **검증 완료**: §4.4의 실제 XML 구조로 정정함.
+- ~~articleDetail.kci N+1 호출의 detail 동시성 튜닝.~~ → **불필요**: articleDetail 단계 자체가 제거됨.
+- KCI 일일 호출 한도(공식 명시 없음)가 보수 추정. `SOURCE_PLAN["combined"]["kci"]: 3` 값은 실사용 모니터링 후 조정 가능.
 - `max_papers_per_indicator`가 50이지만 KCI 검색 풀이 작아 실제 반환은 그보다 적을 수 있음. 정상.
+- 실제 검증 결과: `keyword=HBM bandwidth`로 7건 정상 반환, 모든 필드(title, abstract, year, citation_count, doi, journal_name, country) 정확히 정규화됨.
