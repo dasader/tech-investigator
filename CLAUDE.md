@@ -65,7 +65,7 @@ cd frontend && npm install && npm run dev
 
 `TechQuery.search_source` 컬럼 값으로 분기:
 
-- `combined` (기본): Semantic Scholar + OpenAlex 동시 검색, DOI/title 기반 best-of 머지. 동시성 `S2=1` / `OpenAlex=10` (S2는 ~1 req/s 제한)
+- `combined` (기본): Semantic Scholar + OpenAlex + KCI 동시 검색, DOI/title 기반 best-of 머지. 동시성 `S2=1` / `OpenAlex=10` / `KCI=3`. KCI는 한국학술지 인용색인이며 `KCI_API_KEY` 미설정 시 자동 skip되어 S2+OpenAlex만 사용.
 - `scopus`: Scopus 단독. 동시성 `5` (Elsevier ~9 req/s 한도)
 
 ### 비동기 작업 + 알림
@@ -94,6 +94,8 @@ response = await run_sync(lambda: genai_client.models.generate_content(...))
 **`MAX_PAPERS_PER_INDICATOR` 변경 시 주의** — `backend/app/config.py`의 기본값과 루트 `.env`의 환경변수가 **둘 다 정의**되어 있고 `.env`가 우선한다. 변경하려면 두 곳을 함께 수정해야 효과가 있음.
 
 **한국어 UI 텍스트** — `Job.current_step`(예: "논문 검색 중", "수치 추출 중", "완료")과 이메일 본문 등 사용자 노출 문자열은 한국어로 고정. 변경 시 프론트엔드/이메일 모두 확인.
+
+**KCI 통합** — KCI Open API(`open.kci.go.kr`)는 XML 응답 + articleSearch/articleDetail 2단 호출. `kci_agent.py`가 N+1 호출을 내부에 캡슐화하고 paper dict는 S2/OpenAlex와 동일한 형식으로 반환. country는 항상 "South Korea" default + `country_lookup_done=True`로 set되어 `extraction_agent`의 OpenAlex 재조회를 차단.
 
 ### DB 스키마
 
