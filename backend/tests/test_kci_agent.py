@@ -175,7 +175,7 @@ async def test_kci_detail_partial_failure(monkeypatch, caplog):
             response.text = MOCK_SEARCH_XML_2RECORDS
             return response
         # articleDetail: ART001 성공, ART002 실패(500)
-        if params.get("id") == "ART001":
+        if (params or {}).get("id") == "ART001":
             response.status_code = 200
             response.text = MOCK_DETAIL_XML
             return response
