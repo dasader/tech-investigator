@@ -5,7 +5,7 @@ import { createTechInput } from "../api/client";
 interface Props { onNext: (queryId: number) => void; }
 
 const SOURCE_OPTIONS = [
-  { value: "combined", label: "OpenAlex + Semantic Scholar" },
+  { value: "combined", label: "OpenAlex + Semantic Scholar + KCI" },
   { value: "scopus",   label: "Scopus (Elsevier)" },
 ] as const;
 
@@ -39,7 +39,7 @@ export default function InputPage({ onNext }: Props) {
   };
 
   const sourceLabel =
-    SOURCE_OPTIONS.find((o) => o.value === searchSource)?.label ?? "OpenAlex + Semantic Scholar";
+    SOURCE_OPTIONS.find((o) => o.value === searchSource)?.label ?? "OpenAlex + Semantic Scholar + KCI";
 
   return (
     <div className="min-h-[calc(100vh-61px)] flex items-center justify-center px-4 py-16">
