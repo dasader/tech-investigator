@@ -180,3 +180,33 @@ async def test_extraction_prompt_omits_hint_when_absent():
     assert indicators_json_match, "Could not find indicators JSON section in prompt"
     indicators_section = indicators_json_match.group(1)
     assert "extraction_hint" not in indicators_section
+
+
+@pytest.mark.asyncio
+async def test_extraction_prompt_includes_domain_context():
+    """category/description이 Gemini prompt에 포함된다."""
+    captured_prompts: list[str] = []
+
+    def _capture(**kwargs):
+        captured_prompts.append(kwargs.get("contents", ""))
+        return _gemini_response([{
+            "indicator_id": 1, "value": 1228.0, "unit": "GB/s",
+            "confidence_score": 0.9, "quote": "1228 GB/s",
+        }])
+
+    with patch("app.agents.extraction_agent.genai_client") as mock_client, \
+         patch("app.agents.extraction_agent._get_country_from_openalex",
+               new=AsyncMock(return_value=None)):
+        mock_client.models.generate_content.side_effect = _capture
+        await extract_metrics_from_paper(
+            PAPER_WITH_VALUE, [INDICATOR_BANDWIDTH], client=_client(),
+            category="HBM 고대역폭 메모리",
+            description="이형접합 기판 기반의 적층 기술",
+        )
+
+    assert len(captured_prompts) == 1
+    prompt = captured_prompts[0]
+    assert "HBM 고대역폭 메모리" in prompt
+    assert "이형접합 기판 기반의 적층 기술" in prompt
+    assert "연구 도메인 컨텍스트" in prompt
+    assert "도메인 매칭 지침" in prompt
