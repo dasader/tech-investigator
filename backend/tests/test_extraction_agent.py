@@ -210,3 +210,31 @@ async def test_extraction_prompt_includes_domain_context():
     assert "이형접합 기판 기반의 적층 기술" in prompt
     assert "연구 도메인 컨텍스트" in prompt
     assert "도메인 매칭 지침" in prompt
+
+
+@pytest.mark.asyncio
+async def test_extraction_works_without_domain_context():
+    """category/description 누락 호출도 정상 동작 (backward compat)."""
+    captured_prompts: list[str] = []
+
+    def _capture(**kwargs):
+        captured_prompts.append(kwargs.get("contents", ""))
+        return _gemini_response([{
+            "indicator_id": 1, "value": 1228.0, "unit": "GB/s",
+            "confidence_score": 0.9, "quote": "1228 GB/s",
+        }])
+
+    with patch("app.agents.extraction_agent.genai_client") as mock_client, \
+         patch("app.agents.extraction_agent._get_country_from_openalex",
+               new=AsyncMock(return_value=None)):
+        mock_client.models.generate_content.side_effect = _capture
+        # category/description 인자 없이 호출
+        results = await extract_metrics_from_paper(
+            PAPER_WITH_VALUE, [INDICATOR_BANDWIDTH], client=_client(),
+        )
+
+    assert len(results) == 1
+    # 컨텍스트 블록은 들어가지만 값은 빈 문자열 — Gemini가 사실상 무시
+    prompt = captured_prompts[0]
+    assert "기술 분야: \n" in prompt or "기술 분야: " in prompt
+    assert "세부 설명: \n" in prompt or "세부 설명: " in prompt
