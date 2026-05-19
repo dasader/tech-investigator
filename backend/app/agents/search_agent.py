@@ -186,6 +186,7 @@ async def search_all_sources(
             keywords,
             s2_semaphore=semaphores["semantic_scholar"],
             openalex_semaphore=semaphores["openalex"],
+            kci_semaphore=semaphores["kci"],
             client=client,
             max_results=max_results,
         )

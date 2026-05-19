@@ -86,21 +86,51 @@ async def test_search_all_sources_scopus_dispatches(mock_httpx_client, monkeypat
 @pytest.mark.asyncio
 async def test_search_all_sources_combined_dispatches(monkeypatch):
     captured = {}
-    async def fake_combined(keywords, *, s2_semaphore, openalex_semaphore, client, max_results=None):
+    async def fake_combined(keywords, *, s2_semaphore, openalex_semaphore, kci_semaphore, client, max_results=None):
         captured["s2_sem"] = s2_semaphore
         captured["oa_sem"] = openalex_semaphore
+        captured["kci_sem"] = kci_semaphore
         return [{"title": "merged"}]
     from app.agents import search_agent
     monkeypatch.setattr(search_agent, "search_combined", fake_combined)
-    s2_sem, oa_sem = asyncio.Semaphore(1), asyncio.Semaphore(10)
+    s2_sem, oa_sem, kci_sem = asyncio.Semaphore(1), asyncio.Semaphore(10), asyncio.Semaphore(3)
     results = await search_all_sources(
         "HBM", source="combined",
-        semaphores={"semantic_scholar": s2_sem, "openalex": oa_sem},
+        semaphores={"semantic_scholar": s2_sem, "openalex": oa_sem, "kci": kci_sem},
         client=MagicMock())
 
     assert captured["s2_sem"] is s2_sem
     assert captured["oa_sem"] is oa_sem
+    assert captured["kci_sem"] is kci_sem
     assert results[0]["title"] == "merged"
+
+
+@pytest.mark.asyncio
+async def test_search_all_sources_combined_passes_kci_semaphore(monkeypatch):
+    """combined 호출 시 semaphores dict에 'kci' 키가 있고 search_combined로 전달되는지."""
+    from app.agents import search_agent
+    captured: dict = {}
+
+    async def fake_search_combined(keywords, **kw):
+        captured.update(kw)
+        return []
+
+    monkeypatch.setattr(search_agent, "search_combined", fake_search_combined)
+
+    client = MagicMock()
+    await search_agent.search_all_sources(
+        "HBM",
+        source="combined",
+        max_results=5,
+        semaphores={
+            "semantic_scholar": asyncio.Semaphore(1),
+            "openalex": asyncio.Semaphore(10),
+            "kci": asyncio.Semaphore(3),
+        },
+        client=client,
+    )
+    assert "kci_semaphore" in captured
+    assert isinstance(captured["kci_semaphore"], asyncio.Semaphore)
 
 
 @pytest.mark.asyncio
