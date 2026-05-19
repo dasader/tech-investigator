@@ -135,40 +135,39 @@ async def search_combined(
     *,
     s2_semaphore: asyncio.Semaphore,
     openalex_semaphore: asyncio.Semaphore,
+    kci_semaphore: asyncio.Semaphore,
     client: httpx.AsyncClient,
     max_results: int | None = None,
 ) -> list[dict]:
-    """OpenAlex + Semantic Scholar를 동시 검색해 병합. 그레이스풀 다운.
+    """S2 + OpenAlex + KCI 동시 검색 후 best-of 머지. 그레이스풀 다운.
 
-    한 소스가 실패하면 warning 로그 후 그 소스는 빈 결과로 취급한다.
-    둘 다 실패하면 RuntimeError를 올린다.
+    1~2개 소스가 실패하면 warning 후 나머지로 진행. 셋 다 실패 시 RuntimeError.
     """
-    s2_result, oa_result = await asyncio.gather(
+    from app.agents import kci_agent
+    s2_result, oa_result, kci_result = await asyncio.gather(
         search_papers_for_indicator(keywords, max_results, s2_semaphore, client=client),
         openalex_agent.search_papers_for_indicator(
             keywords, max_results, openalex_semaphore, client=client),
+        kci_agent.search_papers_for_indicator(
+            keywords, max_results, kci_semaphore, client=client),
         return_exceptions=True,
     )
-    s2_failed = isinstance(s2_result, BaseException)
-    oa_failed = isinstance(oa_result, BaseException)
-    if s2_failed and oa_failed:
+    names = ("S2", "OpenAlex", "KCI")
+    results = (s2_result, oa_result, kci_result)
+    failed = [n for n, r in zip(names, results) if isinstance(r, BaseException)]
+    if len(failed) == 3:
         raise RuntimeError(
-            f"combined search failed for {keywords!r}: "
-            f"S2={s2_result}, OpenAlex={oa_result}"
-        ) from s2_result
-    if s2_failed:
-        logger.warning(
-            "combined search: S2 failed for %r (%s), using OpenAlex only",
-            keywords, s2_result,
+            f"all sources failed for {keywords!r}: "
+            f"S2={s2_result}, OpenAlex={oa_result}, KCI={kci_result}"
         )
-    if oa_failed:
-        logger.warning(
-            "combined search: OpenAlex failed for %r (%s), using S2 only",
-            keywords, oa_result,
-        )
-    s2_papers = [] if s2_failed else s2_result
-    oa_papers = [] if oa_failed else oa_result
-    return merge_papers(s2_papers, oa_papers)
+    for name, r in zip(names, results):
+        if isinstance(r, BaseException):
+            logger.warning(
+                "combined search: %s failed for %r (%s), using remaining sources",
+                name, keywords, r,
+            )
+    papers_lists = [[] if isinstance(r, BaseException) else r for r in results]
+    return merge_papers(*papers_lists)
 
 
 async def search_all_sources(

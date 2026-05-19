@@ -130,3 +130,57 @@ def test_merge_papers_3way_dedup_by_doi():
     assert by_doi["10.1/x"]["abstract"] == "much longer abstract content"
     # citation_count는 max
     assert by_doi["10.1/x"]["citation_count"] == 8
+
+
+@pytest.mark.asyncio
+async def test_search_combined_kci_failure_continues(mock_httpx_client, monkeypatch):
+    from app.agents import search_agent
+    from app.agents import openalex_agent, kci_agent
+
+    async def fake_s2(*a, **kw):
+        return [{"doi": "10.1/a", "title": "A", "abstract": "x", "year": 2024, "citation_count": 3, "paper_id": "S1"}]
+
+    async def fake_oa(*a, **kw):
+        return [{"doi": "10.2/b", "title": "B", "abstract": "y", "year": 2024, "citation_count": 2, "paper_id": "O1", "country": "USA"}]
+
+    async def fake_kci(*a, **kw):
+        raise RuntimeError("KCI down")
+
+    monkeypatch.setattr(search_agent, "search_papers_for_indicator", fake_s2)
+    monkeypatch.setattr(openalex_agent, "search_papers_for_indicator", fake_oa)
+    monkeypatch.setattr(kci_agent, "search_papers_for_indicator", fake_kci)
+
+    client = mock_httpx_client()
+    results = await search_agent.search_combined(
+        "HBM",
+        s2_semaphore=asyncio.Semaphore(1),
+        openalex_semaphore=asyncio.Semaphore(10),
+        kci_semaphore=asyncio.Semaphore(3),
+        client=client,
+    )
+    dois = {p["doi"] for p in results}
+    assert "10.1/a" in dois
+    assert "10.2/b" in dois
+
+
+@pytest.mark.asyncio
+async def test_search_combined_3way_all_fail_raises(mock_httpx_client, monkeypatch):
+    from app.agents import search_agent
+    from app.agents import openalex_agent, kci_agent
+
+    async def boom(*a, **kw):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(search_agent, "search_papers_for_indicator", boom)
+    monkeypatch.setattr(openalex_agent, "search_papers_for_indicator", boom)
+    monkeypatch.setattr(kci_agent, "search_papers_for_indicator", boom)
+
+    client = mock_httpx_client()
+    with pytest.raises(RuntimeError, match="all sources failed"):
+        await search_agent.search_combined(
+            "HBM",
+            s2_semaphore=asyncio.Semaphore(1),
+            openalex_semaphore=asyncio.Semaphore(10),
+            kci_semaphore=asyncio.Semaphore(3),
+            client=client,
+        )

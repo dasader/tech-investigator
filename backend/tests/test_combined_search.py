@@ -78,9 +78,12 @@ async def test_search_combined_merges_both_sources():
     with patch("app.agents.search_agent.search_papers_for_indicator",
                new=AsyncMock(return_value=s2_papers)), \
          patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
-               new=AsyncMock(return_value=oa_papers)):
+               new=AsyncMock(return_value=oa_papers)), \
+         patch("app.agents.kci_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=[])):
         result = await search_combined(
-            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(),
+            kci_semaphore=_sem(), client=MagicMock())
     assert {p["doi"] for p in result} == {"10.1/a", "10.1/b"}
 
 
@@ -92,9 +95,12 @@ async def test_search_combined_degrades_when_s2_fails():
     with patch("app.agents.search_agent.search_papers_for_indicator",
                new=AsyncMock(side_effect=RuntimeError("S2 down"))), \
          patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
-               new=AsyncMock(return_value=oa_papers)):
+               new=AsyncMock(return_value=oa_papers)), \
+         patch("app.agents.kci_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=[])):
         result = await search_combined(
-            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(),
+            kci_semaphore=_sem(), client=MagicMock())
     assert [p["doi"] for p in result] == ["10.1/b"]
 
 
@@ -105,9 +111,12 @@ async def test_search_combined_degrades_when_openalex_fails():
     with patch("app.agents.search_agent.search_papers_for_indicator",
                new=AsyncMock(return_value=s2_papers)), \
          patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
-               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))):
+               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))), \
+         patch("app.agents.kci_agent.search_papers_for_indicator",
+               new=AsyncMock(return_value=[])):
         result = await search_combined(
-            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+            "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(),
+            kci_semaphore=_sem(), client=MagicMock())
     assert [p["doi"] for p in result] == ["10.1/a"]
 
 
@@ -116,7 +125,10 @@ async def test_search_combined_raises_when_both_fail():
     with patch("app.agents.search_agent.search_papers_for_indicator",
                new=AsyncMock(side_effect=RuntimeError("S2 down"))), \
          patch("app.agents.search_agent.openalex_agent.search_papers_for_indicator",
-               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))):
-        with pytest.raises(RuntimeError, match="combined search failed"):
+               new=AsyncMock(side_effect=RuntimeError("OpenAlex down"))), \
+         patch("app.agents.kci_agent.search_papers_for_indicator",
+               new=AsyncMock(side_effect=RuntimeError("KCI down"))):
+        with pytest.raises(RuntimeError, match="all sources failed"):
             await search_combined(
-                "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(), client=MagicMock())
+                "kw", s2_semaphore=_sem(), openalex_semaphore=_sem(),
+                kci_semaphore=_sem(), client=MagicMock())
