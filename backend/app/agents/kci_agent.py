@@ -30,15 +30,19 @@ def _pick_by_lang(records: list[ET.Element], preferred: str = "eng") -> str:
 
 def _find_doi(record: ET.Element) -> str | None:
     for aid in record.findall("article-id"):
-        if aid.get("pubidtype") == "doi" and (aid.text or "").strip():
-            return aid.text.strip()
+        if aid.get("pubidtype") == "doi":
+            text = (aid.text or "").strip()
+            if text:
+                return text
     return None
 
 
 def _find_kci_id(record: ET.Element) -> str | None:
     for aid in record.findall("article-id"):
-        if aid.get("pubidtype") == "kciid" and (aid.text or "").strip():
-            return aid.text.strip()
+        if aid.get("pubidtype") == "kciid":
+            text = (aid.text or "").strip()
+            if text:
+                return text
     return None
 
 
