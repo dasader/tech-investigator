@@ -36,7 +36,7 @@ def get_engine_label(search_source: str) -> str:
     if search_source == "scopus":
         return "Scopus (Elsevier) + Gemini"
     # combined 및 기타 모든 값(마이그레이션 전 잔존 구값 포함) → 기본 라벨
-    return "OpenAlex + Semantic Scholar + Gemini"
+    return "OpenAlex + Semantic Scholar + KCI + Gemini"
 
 
 def get_search_source(db: Session, query_id: int) -> str:
