@@ -81,7 +81,12 @@ async def extract_node(state: PipelineState, db: Session, client: httpx.AsyncCli
             paper_groups[key]["indicators"].append(ind)
 
     tasks = [
-        extract_metrics_from_paper(group["paper"], group["indicators"], semaphore, client=client)
+        extract_metrics_from_paper(
+            group["paper"], group["indicators"], semaphore,
+            client=client,
+            category=state["category"],
+            description=state["description"],
+        )
         for group in paper_groups.values()
     ]
 

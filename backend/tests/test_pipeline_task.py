@@ -21,7 +21,7 @@ MOCK_EXTRACTION = {
 
 def test_full_flow(client):
     # extract_metrics_from_paper는 [(indicator_id, result_dict), ...] 를 반환
-    async def mock_batch_extract(paper, indicators, semaphore=None):
+    async def mock_batch_extract(paper, indicators, semaphore=None, **_kwargs):
         return [(ind["id"], MOCK_EXTRACTION) for ind in indicators]
 
     with patch("app.agents.indicator_agent.generate_indicators", new=AsyncMock(return_value=MOCK_INDICATORS)), \

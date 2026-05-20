@@ -12,6 +12,15 @@ genai_client = genai.Client(api_key=settings.gemini_api_key)
 
 BATCH_EXTRACTION_PROMPT = """다음 논문 초록에서 지표 목록의 수치를 각각 추출하세요.
 
+연구 도메인 컨텍스트:
+- 기술 분야: {category}
+- 세부 설명: {description}
+
+도메인 매칭 지침:
+- 논문이 위 도메인과 명백히 다른 세부기술을 다루는 경우(예: 다른 메모리 타입, 다른 응용 영역) 수치는 추출하되 confidence_score를 0.3 이하로 책정하세요.
+- 인접 기술을 비교 목적으로 다루는 경우(예: HBM 분석 중 GDDR7 비교)는 confidence_score를 중간(약 0.5) 책정.
+- 도메인이 정확히 일치하면 평소대로 평가.
+
 논문 제목: {title}
 논문 초록: {abstract}
 
@@ -65,6 +74,8 @@ async def extract_metrics_from_paper(
     semaphore: asyncio.Semaphore | None = None,
     *,
     client: httpx.AsyncClient,
+    category: str = "",
+    description: str = "",
 ) -> list[tuple[int, dict]]:
     """논문 1개에서 여러 지표를 한 번의 Gemini 호출로 추출.
 
@@ -91,9 +102,15 @@ async def extract_metrics_from_paper(
             ],
             ensure_ascii=False,
         )
+
+        def _escape_braces(s: str) -> str:
+            return s.replace("{", "{{").replace("}", "}}")
+
         prompt = BATCH_EXTRACTION_PROMPT.format(
-            title=paper.get("title", ""),
-            abstract=paper.get("abstract", ""),
+            category=_escape_braces(category),
+            description=_escape_braces(description),
+            title=_escape_braces(paper.get("title", "")),
+            abstract=_escape_braces(paper.get("abstract", "")),
             indicators_json=indicators_json,
             n=len(indicators),
         )
