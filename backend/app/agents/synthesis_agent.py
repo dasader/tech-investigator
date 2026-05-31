@@ -44,7 +44,8 @@ JSON 형식으로 반환하세요:
         model=settings.gemini_model_fast,
         contents=prompt,
         config=types.GenerateContentConfig(
-            response_mime_type="application/json"
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
         ),
     ))
 

@@ -127,7 +127,10 @@ async def extract_metrics_from_paper(
             run_sync_with_retry(lambda: genai_client.models.generate_content(
                 model=settings.gemini_model_fast,
                 contents=prompt,
-                config=types.GenerateContentConfig(response_mime_type="application/json"),
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
+                ),
             )),
             _country_coro(),
         )
