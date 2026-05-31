@@ -104,8 +104,8 @@ docker compose exec api alembic upgrade head
 |------|:----:|-----|
 | `GEMINI_API_KEY` | ✅ | Google Gemini API 키 |
 | `DATABASE_URL` | ✅ | PostgreSQL 연결 문자열 |
-| `GEMINI_MODEL_FAST` | | 빠른 단계용 모델 (기본: `gemini-2.5-flash`) |
-| `GEMINI_MODEL_COMPLEX` | | 합성 단계용 모델 (기본: `gemini-2.5-pro`) |
+| `GEMINI_MODEL_FAST` | | 빠른 단계용 모델 (기본: `gemini-3.1-flash-lite`) |
+| `GEMINI_MODEL_COMPLEX` | | 합성 단계용 모델 (기본: `gemini-3.5-flash`) |
 | `SEMANTIC_SCHOLAR_API_KEY` | | S2 rate limit 완화 (선택) |
 | `ELSEVIER_API_KEY` | | Scopus 사용 시 필요 |
 | `OPENALEX_API_KEY` | | OpenAlex polite pool용 (선택) |

@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     gemini_api_key: str
-    gemini_model_complex: str = "gemini-2.5-pro"
-    gemini_model_fast: str = "gemini-2.5-flash"
+    gemini_model_complex: str = "gemini-3.5-flash"
+    gemini_model_fast: str = "gemini-3.1-flash-lite"
     semantic_scholar_api_key: str = ""
     elsevier_api_key: str = ""
     openalex_api_key: str = ""
