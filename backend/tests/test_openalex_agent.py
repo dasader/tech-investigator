@@ -1,5 +1,9 @@
 import pytest
-from app.agents.openalex_agent import _reconstruct_abstract, search_papers_for_indicator
+from app.agents.openalex_agent import (
+    _reconstruct_abstract,
+    search_papers_for_indicator,
+    batch_resolve_countries,
+)
 
 pytestmark = pytest.mark.no_db
 
@@ -128,3 +132,54 @@ async def test_search_uses_cited_by_count_sort(mock_httpx_client):
 
     _, kwargs = client.get.call_args
     assert kwargs.get("params", {}).get("sort") == "cited_by_count:desc"
+
+
+@pytest.mark.asyncio
+async def test_batch_resolve_countries_maps_doi_to_country(mock_httpx_client):
+    body = {
+        "results": [
+            {"doi": "https://doi.org/10.1/aaa",
+             "authorships": [{"institutions": [{"country_code": "KR"}]}]},
+            {"doi": "https://doi.org/10.2/bbb",
+             "authorships": [{"institutions": [{"country_code": "US"}]}]},
+        ]
+    }
+    client = mock_httpx_client(json_body=body)
+    result = await batch_resolve_countries(["10.1/aaa", "10.2/bbb"], client=client)
+
+    assert result == {"10.1/aaa": "South Korea", "10.2/bbb": "USA"}
+    # 단일 일괄 호출 — per-paper N+1이 아니어야 한다.
+    assert client.get.call_count == 1
+    _, kwargs = client.get.call_args
+    assert kwargs["params"]["filter"] == "doi:10.1/aaa|10.2/bbb"
+
+
+@pytest.mark.asyncio
+async def test_batch_resolve_countries_omits_unresolved(mock_httpx_client):
+    body = {
+        "results": [
+            {"doi": "https://doi.org/10.1/aaa",
+             "authorships": [{"institutions": []}]},  # country 없음
+        ]
+    }
+    client = mock_httpx_client(json_body=body)
+    result = await batch_resolve_countries(["10.1/aaa", "10.9/missing"], client=client)
+    # country 없는/응답에 없는 DOI는 맵에서 빠진다(호출측 fallback 유지).
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_batch_resolve_countries_empty_input_no_call(mock_httpx_client):
+    client = mock_httpx_client(json_body={"results": []})
+    result = await batch_resolve_countries([], client=client)
+    assert result == {}
+    client.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_batch_resolve_countries_chunks_over_50(mock_httpx_client):
+    dois = [f"10.x/{i}" for i in range(120)]
+    client = mock_httpx_client(json_body={"results": []})
+    await batch_resolve_countries(dois, client=client)
+    # 120 dois → 50/50/20 = 3 chunks → 3 calls
+    assert client.get.call_count == 3

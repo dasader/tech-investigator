@@ -5,6 +5,7 @@ from typing import TypedDict, List
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+from app.agents import openalex_agent
 from app.agents.search_agent import search_all_sources
 from app.agents.extraction_agent import extract_metrics_from_paper
 from app.agents.validation_agent import validate_and_rank
@@ -79,6 +80,27 @@ async def extract_node(state: PipelineState, db: Session, client: httpx.AsyncCli
             if key not in paper_groups:
                 paper_groups[key] = {"paper": paper, "indicators": []}
             paper_groups[key]["indicators"].append(ind)
+
+    # country 미상 + DOI 보유 논문은 OpenAlex로 일괄 조회(per-paper N+1 제거).
+    # 조회 결과를 paper에 주입하면 extract_metrics_from_paper의 country 가드가
+    # 추가 단건 호출을 스킵한다. 못 찾은 DOI는 country_lookup_done=True로 막아
+    # 단건 fallback까지 차단(이미 일괄 조회에서 빠진 것).
+    pending = [
+        g["paper"] for g in paper_groups.values()
+        if g["paper"].get("country") is None
+        and not g["paper"].get("country_lookup_done")
+        and g["paper"].get("doi")
+    ]
+    if pending:
+        country_map = await openalex_agent.batch_resolve_countries(
+            [p["doi"] for p in pending], client=client,
+        )
+        for paper in pending:
+            resolved = country_map.get(paper["doi"])
+            if resolved is not None:
+                paper["country"] = resolved
+            else:
+                paper["country_lookup_done"] = True
 
     tasks = [
         extract_metrics_from_paper(

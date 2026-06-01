@@ -35,6 +35,52 @@ def _resolve_country(authorships: list) -> str | None:
     return COUNTRY_CODES.get(code, code)
 
 
+async def batch_resolve_countries(
+    dois: list[str], *, client: httpx.AsyncClient,
+) -> dict[str, str]:
+    """DOI 목록 → {bare_doi: country} 맵. OpenAlex `filter=doi:a|b|...`로 일괄 조회.
+
+    per-paper `/works/doi:{doi}` 조회의 N+1을 제거. 50개씩(OpenAlex per-page 상한)
+    chunk해 호출하며, country를 못 찾은 DOI는 맵에 넣지 않는다(호출측 fallback 유지).
+    chunk 단위로 graceful — 한 chunk가 실패해도 나머지는 진행.
+    """
+    unique = list(dict.fromkeys(d for d in dois if d))
+    if not unique:
+        return {}
+
+    result: dict[str, str] = {}
+    for i in range(0, len(unique), 50):
+        chunk = unique[i:i + 50]
+        params: dict = {
+            "filter": "doi:" + "|".join(chunk),
+            "per-page": 50,
+            "select": "doi,authorships",
+        }
+        if settings.openalex_api_key:
+            params["api_key"] = settings.openalex_api_key
+        try:
+            data = await get_with_retry(
+                OPENALEX_API_URL,
+                client=client,
+                params=params,
+                service_name="OpenAlex",
+                context=f"country batch ({len(chunk)} dois)",
+            )
+            for item in data.get("results", []) or []:
+                doi = strip_doi_prefix(item.get("doi"))
+                if not doi:
+                    continue
+                country = _resolve_country(item.get("authorships") or [])
+                if country:
+                    result[doi] = country
+        except Exception as e:
+            logger.warning("OpenAlex country batch failed for %d dois: %s", len(chunk), e)
+            continue
+
+    logger.info("[OPENALEX] country batch: %d dois → %d resolved", len(unique), len(result))
+    return result
+
+
 def _resolve_journal(primary_location: dict | None) -> str | None:
     if not primary_location:
         return None

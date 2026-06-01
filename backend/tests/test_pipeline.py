@@ -47,14 +47,58 @@ async def test_extract_node_passes_domain_context_to_extractor():
         "extracted_values": {},
         "validated_values": {},
         "report_markdown": "",
-        "error": "",
     }
     db = MagicMock(spec=Session)
-    db.query.return_value.filter.return_value.first.return_value = MagicMock(progress_pct=0.0, current_step="")
+    db.get.return_value = MagicMock(progress_pct=0.0, current_step="")
     client = AsyncMock(spec=httpx.AsyncClient)
 
-    with patch("app.agents.pipeline.extract_metrics_from_paper", new=fake_extract):
+    async def fake_batch(dois, *, client):
+        return {}
+
+    with patch("app.agents.pipeline.extract_metrics_from_paper", new=fake_extract), \
+         patch("app.agents.pipeline.openalex_agent.batch_resolve_countries", new=fake_batch):
         await extract_node(state, db, client)
 
     assert captured["category"] == "HBM 고대역폭 메모리"
     assert captured["description"] == "이형접합 기판 기반의 적층 기술"
+
+
+@pytest.mark.asyncio
+async def test_extract_node_batch_resolves_country_before_extract():
+    """country 미상+DOI 논문은 일괄 OpenAlex 조회로 country가 채워지고,
+    못 찾은 DOI는 country_lookup_done=True로 막혀 per-paper 조회를 스킵한다."""
+    seen_papers: list[dict] = []
+
+    async def fake_extract(paper, indicators, semaphore, *, client, category="", description=""):
+        seen_papers.append(paper)
+        return []
+
+    async def fake_batch(dois, *, client):
+        assert set(dois) == {"10.1/has", "10.2/none"}
+        return {"10.1/has": "South Korea"}  # 두 번째는 미해결
+
+    state = {
+        "job_id": 1, "query_id": 1, "category": "C", "description": "D",
+        "search_source": "combined",
+        "indicators": [{"id": 1, "name": "지표", "unit": "u",
+                        "search_keywords": "k", "extraction_hint": None}],
+        "search_results": {1: [
+            {"title": "P1", "abstract": "1 u", "doi": "10.1/has", "country": None},
+            {"title": "P2", "abstract": "2 u", "doi": "10.2/none", "country": None},
+            {"title": "P3", "abstract": "3 u", "doi": None, "country": "USA"},  # 조회 대상 아님
+        ]},
+        "extracted_values": {}, "validated_values": {}, "report_markdown": "",
+    }
+    db = MagicMock(spec=Session)
+    db.get.return_value = MagicMock(progress_pct=0.0, current_step="")
+    client = AsyncMock(spec=httpx.AsyncClient)
+
+    with patch("app.agents.pipeline.extract_metrics_from_paper", new=fake_extract), \
+         patch("app.agents.pipeline.openalex_agent.batch_resolve_countries", new=fake_batch):
+        await extract_node(state, db, client)
+
+    by_doi = {p.get("doi"): p for p in seen_papers}
+    assert by_doi["10.1/has"]["country"] == "South Korea"
+    assert by_doi["10.2/none"]["country"] is None
+    assert by_doi["10.2/none"]["country_lookup_done"] is True   # 단건 fallback 차단
+    assert by_doi[None]["country"] == "USA"                      # 손대지 않음
