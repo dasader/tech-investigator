@@ -2,7 +2,6 @@ import asyncio
 import logging
 import httpx
 from typing import TypedDict, List
-from langgraph.graph import StateGraph, END
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -14,6 +13,7 @@ from app.models.indicator import Indicator
 from app.models.metric_value import MetricValue
 from app.models.job import Job
 from app.config import settings
+from app.utils import DEFAULT_SEARCH_SOURCE
 
 class PipelineState(TypedDict):
     job_id: int
@@ -26,7 +26,6 @@ class PipelineState(TypedDict):
     extracted_values: dict    # indicator_id -> list of extractions
     validated_values: dict    # indicator_id -> top3 validated
     report_markdown: str
-    error: str
 
 # search_source → {하위 소스: 동시성 한도}.
 # 외부 API rate limit 기반: Semantic Scholar ~1 req/s, OpenAlex ~100 req/s, Scopus ~9 req/s, KCI 보수적.
@@ -38,7 +37,8 @@ SOURCE_PLAN: dict[str, dict[str, int]] = {
 
 
 def _update_job(db: Session, job_id: int, progress_pct: float, current_step: str):
-    job = db.query(Job).filter(Job.id == job_id).first()
+    # db.get uses the Session identity map → no repeated SELECT after first load.
+    job = db.get(Job, job_id)
     if job:
         job.progress_pct = progress_pct
         job.current_step = current_step
@@ -159,8 +159,6 @@ async def synthesize_node(state: PipelineState, db: Session) -> PipelineState:
     return {**state, "report_markdown": markdown}
 
 async def run_pipeline(job_id: int, db: Session) -> str:
-    from app.models.job import Job
-    from app.models.indicator import Indicator
     from app.models.tech_query import TechQuery
 
     job = db.query(Job).filter(Job.id == job_id).first()
@@ -175,7 +173,7 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "query_id": job.query_id,
         "category": query.category,
         "description": query.description,
-        "search_source": query.search_source or "combined",
+        "search_source": query.search_source or DEFAULT_SEARCH_SOURCE,
         "indicators": [
             {
                 "id": i.id,
@@ -190,7 +188,6 @@ async def run_pipeline(job_id: int, db: Session) -> str:
         "extracted_values": {},
         "validated_values": {},
         "report_markdown": "",
-        "error": "",
     }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:

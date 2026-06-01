@@ -20,7 +20,6 @@ def _state(validated_values: dict, indicators: list[dict]) -> PipelineState:
         "extracted_values": {},
         "validated_values": validated_values,
         "report_markdown": "",
-        "error": "",
     }
 
 

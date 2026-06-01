@@ -1,4 +1,5 @@
-interface Indicator { id: number; name: string; unit: string; description: string; confirmed_by_user: boolean; }
+import type { Indicator } from "../types/indicator";
+
 interface Props {
   indicators: Indicator[];
   onUpdate: (id: number, data: Partial<Indicator>) => void;

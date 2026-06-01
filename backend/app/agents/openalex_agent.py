@@ -4,6 +4,7 @@ import httpx
 from app.config import settings
 from app.agents.country_codes import COUNTRY_CODES
 from app.agents._http_retry import get_with_retry
+from app.agents._doi import strip_doi_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +21,6 @@ def _reconstruct_abstract(inv_idx: dict[str, list[int]] | None) -> str:
     if not positions:
         return ""
     return " ".join(positions[i] for i in sorted(positions.keys()))
-
-
-def _strip_doi_prefix(doi: str | None) -> str | None:
-    if not doi:
-        return None
-    for prefix in ("https://doi.org/", "http://doi.org/", "doi.org/"):
-        stripped = doi.removeprefix(prefix)
-        if stripped != doi:
-            return stripped
-    return doi
 
 
 def _resolve_country(authorships: list) -> str | None:
@@ -91,7 +82,7 @@ async def search_papers_for_indicator(
             "abstract": abstract,
             "year": item.get("publication_year"),
             "citation_count": int(item.get("cited_by_count") or 0),
-            "doi": _strip_doi_prefix(item.get("doi")),
+            "doi": strip_doi_prefix(item.get("doi")),
             "journal_name": _resolve_journal(item.get("primary_location")),
             "country": _resolve_country(item.get("authorships") or []),
             # OpenAlex already exposed authorships here — a None country means

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import IndicatorList from "../components/IndicatorList";
 import { generateIndicators, updateIndicator, deleteIndicator, startJob } from "../api/client";
+import type { Indicator } from "../types/indicator";
+import PageLoader from "../components/PageLoader";
 
-interface Indicator { id: number; name: string; unit: string; description: string; confirmed_by_user: boolean; }
 interface Props { queryId: number; onNext: (jobId: number) => void; }
 
 export default function IndicatorEditorPage({ queryId, onNext }: Props) {
@@ -41,15 +42,9 @@ export default function IndicatorEditorPage({ queryId, onNext }: Props) {
 
   if (loading) {
     return (
-      <div className="min-h-[calc(100vh-61px)] flex flex-col items-center justify-center gap-4">
-        <div
-          className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-          style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-amber)" }}
-        />
-        <p className="text-sm" style={{ color: "var(--color-text-3)" }}>
-          AI가 지표를 생성하고 있습니다&nbsp;<span style={{ fontFamily: "var(--font-data)" }}>(약 10~20초 소요)</span>
-        </p>
-      </div>
+      <PageLoader>
+        AI가 지표를 생성하고 있습니다&nbsp;<span style={{ fontFamily: "var(--font-data)" }}>(약 10~20초 소요)</span>
+      </PageLoader>
     );
   }
 

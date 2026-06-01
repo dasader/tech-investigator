@@ -1,12 +1,15 @@
 import asyncio
 import json
+import logging
 import re
 import httpx
 from google import genai
 from google.genai import types
 from app.config import settings
 from app.utils import run_sync_with_retry
-from app.agents.country_codes import COUNTRY_CODES
+from app.agents.openalex_agent import _resolve_country
+
+logger = logging.getLogger(__name__)
 
 genai_client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -53,18 +56,9 @@ async def _get_country_from_openalex(doi: str, *, client: httpx.AsyncClient) -> 
         r = await client.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
             return None
-        data = r.json()
-        authorships = data.get("authorships") or []
-        if not authorships:
-            return None
-        institutions = authorships[0].get("institutions") or []
-        if not institutions:
-            return None
-        code = institutions[0].get("country_code")
-        if not code:
-            return None
-        return COUNTRY_CODES.get(code, code)
-    except Exception:
+        return _resolve_country(r.json().get("authorships") or [])
+    except Exception as e:
+        logger.debug("OpenAlex country lookup failed for doi=%s: %s", doi, e)
         return None
 
 

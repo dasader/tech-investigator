@@ -6,15 +6,13 @@ from app.database import get_db
 from app.models.job import Job
 from app.models.indicator import Indicator
 from app.models.tech_query import TechQuery
-from app.utils import get_search_source, get_engine_label
+from app.utils import get_search_source, get_engine_label, get_or_404, DEFAULT_SEARCH_SOURCE
 
 router = APIRouter(tags=["results"])
 
 @router.get("/jobs/{job_id}/results")
 def get_results(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_or_404(db, Job, job_id, "Job not found")
     if job.status != "done":
         return JSONResponse(
             status_code=202,
@@ -22,7 +20,7 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
         )
 
     tech_query = db.query(TechQuery).filter(TechQuery.id == job.query_id).first()
-    search_source = (tech_query.search_source if tech_query else None) or "combined"
+    search_source = (tech_query.search_source if tech_query else None) or DEFAULT_SEARCH_SOURCE
     category = tech_query.category if tech_query else ""
     description = tech_query.description if tech_query else ""
 
@@ -65,9 +63,7 @@ def get_results(job_id: int, db: Session = Depends(get_db)):
 
 @router.get("/jobs/{job_id}/pdf")
 def download_pdf(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_or_404(db, Job, job_id, "Job not found")
     if not job.report_markdown:
         raise HTTPException(status_code=404, detail="Report not available")
 

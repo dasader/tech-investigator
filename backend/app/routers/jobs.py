@@ -5,6 +5,7 @@ from app.models.job import Job
 from app.models.indicator import Indicator
 from app.schemas.job import JobOut
 from app.tasks.pipeline_task import run_pipeline_task
+from app.utils import get_or_404
 
 router = APIRouter(tags=["jobs"])
 
@@ -25,9 +26,7 @@ def start_job(query_id: int, db: Session = Depends(get_db)):
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
 def get_job(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_or_404(db, Job, job_id, "Job not found")
     queue_position = None
     if job.status == "pending":
         queue_position = db.query(Job).filter(

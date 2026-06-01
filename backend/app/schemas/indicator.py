@@ -10,10 +10,6 @@ class IndicatorBase(BaseModel):
     extraction_hint: Optional[str] = None
 
 
-class IndicatorCreate(IndicatorBase):
-    pass
-
-
 class IndicatorUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None

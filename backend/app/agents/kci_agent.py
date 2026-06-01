@@ -5,16 +5,11 @@ import httpx
 
 from app.config import settings
 from app.agents._http_retry import get_text_with_retry
+from app.agents._doi import strip_doi_prefix
 
 logger = logging.getLogger(__name__)
 
 KCI_API_URL = "https://open.kci.go.kr/po/openapi/openApiSearch.kci"
-
-_DOI_URL_PREFIXES = (
-    "http://dx.doi.org/", "https://dx.doi.org/",
-    "http://doi.org/", "https://doi.org/",
-    "doi.org/", "dx.doi.org/",
-)
 
 
 def _pick_by_lang(elements: list[ET.Element], preferred: str = "english") -> str:
@@ -34,24 +29,11 @@ def _pick_by_lang(elements: list[ET.Element], preferred: str = "english") -> str
     return fallback
 
 
-def _strip_doi_prefix(doi: str | None) -> str | None:
-    """KCI는 DOI를 'http://dx.doi.org/10.xxx/yyy' 형식 URL로 반환 → bare DOI로 정규화."""
-    if not doi:
-        return None
-    s = doi.strip()
-    if not s:
-        return None
-    for prefix in _DOI_URL_PREFIXES:
-        if s.startswith(prefix):
-            return s[len(prefix):]
-    return s
-
-
 def _find_doi(article_info: ET.Element) -> str | None:
     doi_el = article_info.find("doi")
     if doi_el is None:
         return None
-    return _strip_doi_prefix(doi_el.text)
+    return strip_doi_prefix(doi_el.text)
 
 
 def _int_or(text: str | None, default: int | None) -> int | None:

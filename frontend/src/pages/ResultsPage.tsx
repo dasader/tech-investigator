@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MetricTable from "../components/MetricTable";
 import GlobalBestTable from "../components/GlobalBestTable";
+import PageLoader from "../components/PageLoader";
 import { getResults } from "../api/client";
 import { printCurrentView } from "../utils/exportPdf";
 import { getEngineLabel } from "../utils/format";
@@ -64,19 +65,14 @@ export default function ResultsPage({ jobId }: Props) {
     void getResults(jobId).then((data: ResultsData) => setResults(data));
   }, [jobId]);
 
-  if (!results) {
-    return (
-      <div className="min-h-[calc(100vh-61px)] flex flex-col items-center justify-center gap-4">
-        <div
-          className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-          style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-amber)" }}
-        />
-        <p className="text-sm" style={{ color: "var(--color-text-3)" }}>결과를 불러오는 중...</p>
-      </div>
-    );
-  }
+  const globalBest = useMemo(
+    () => (results?.report_markdown ? extractGlobalBestTable(results.report_markdown) : null),
+    [results?.report_markdown],
+  );
 
-  const globalBest = extractGlobalBestTable(results.report_markdown);
+  if (!results) {
+    return <PageLoader>결과를 불러오는 중...</PageLoader>;
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
